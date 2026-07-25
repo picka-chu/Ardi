@@ -168,6 +168,11 @@ def _registration_chat_sync(conversation: list) -> dict:
                 parts=[types.Part(text=msg["text"])],
                 role="model" if msg["role"] == "assistant" else "user",
             ))
+        if not contents:
+            contents = [types.Content(
+                parts=[types.Part(text="The user wants to register a new business. Greet them and ask for their business name.")],
+                role="user",
+            )]
         text = _call_model_sync(contents, system_instruction=f"{ARD_IDENTITY}\n\n{REGISTRATION_SYSTEM_PROMPT}")
         if "===COMPLETE===" in text:
             parts = text.split("===COMPLETE===")
