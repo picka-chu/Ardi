@@ -424,7 +424,7 @@ loadDashboard();
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return HTML
+    return HTML.replace("{{ADMIN_API_KEY}}", ADMIN_API_KEY)
 
 
 # ─── API ENDPOINTS ──────────────────────────────────────────────
