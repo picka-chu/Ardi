@@ -2534,7 +2534,10 @@ def business_kb():
     btns = [row[:] for row in MENU_BUTTONS]
     from config import MINI_APP_URL
     if MINI_APP_URL:
-        btns.append([KeyboardButton("🌐 Open Dashboard", web_app={"url": f"{MINI_APP_URL}/business"})])
+        url = MINI_APP_URL
+        if url.startswith("http://"):
+            url = "https://" + url[7:]
+        btns.append([KeyboardButton("🌐 Open Dashboard", web_app={"url": f"{url}/business"})])
     return ReplyKeyboardMarkup(btns, resize_keyboard=True)
 
 

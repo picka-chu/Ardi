@@ -64,7 +64,12 @@ def _validate_init_data(init_data: str) -> dict | None:
 
 async def _require_business(request: Request):
     init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if not init_data:
+        init_data = request.query_params.get("tgWebAppData", "")
     user = _validate_init_data(init_data)
+    if not user:
+        logger.warning("MINI_APP_URL env = %s", os.getenv("MINI_APP_URL", "(not set)"))
+        raise HTTPException(status_code=401, detail="Unauthorized")
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     tid = user.get("id")
@@ -367,7 +372,10 @@ input,textarea,select,button{font-family:inherit}
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-const ID=Telegram.WebApp.initData;Telegram.WebApp.ready();Telegram.WebApp.expand();
+const ID=Telegram.WebApp.initData || new URLSearchParams(window.location.search).get('tgWebAppData') || '';
+console.log('Telegram WebApp initData:', ID ? 'present ('+ID.slice(0,30)+'...)' : 'EMPTY');
+if(!ID && !window.__telegram_debug_shown){window.__telegram_debug_shown=1;document.body.insertAdjacentHTML('afterbegin','<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#e74c3c;color:#fff;text-align:center;padding:12px;font-size:14px;font-family:sans-serif">⚠️ Not in Telegram WebView — initData empty</div>')}
+Telegram.WebApp.ready();Telegram.WebApp.expand();
 function hd(){return{"Content-Type":"application/json","X-Telegram-Init-Data":ID}}
 function $(i){return document.getElementById(i)}
 function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');requestAnimationFrame(()=>{e.classList.add('s');clearTimeout(e._h);e._h=setTimeout(()=>e.classList.remove('s'),3000)})}
