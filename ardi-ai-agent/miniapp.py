@@ -7,24 +7,24 @@ Requires: pip install fastapi uvicorn
 """
 
 import os
-import sys
-import subprocess
-
-# Ensure dependencies are installed
-for mod in ("fastapi", "uvicorn"):
-    try:
-        __import__(mod)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", mod])
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="Ardi AI Admin Panel")
 
+# Bot heartbeat — updated by a periodic task in the bot
+bot_last_heartbeat: float = time.monotonic()
+
+HEARTBEAT_TIMEOUT = 120  # seconds — 2x the polling interval
+
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
+    age = time.monotonic() - bot_last_heartbeat
+    if age > HEARTBEAT_TIMEOUT:
+        return Response(status_code=503, content="Bot heartbeat expired")
     return Response(status_code=200)
 
 HTML_PAGE = """<!DOCTYPE html>

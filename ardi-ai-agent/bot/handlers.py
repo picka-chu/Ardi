@@ -2134,6 +2134,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         history.append({"role": "assistant", "text": reply_text[:200]})
 
     # Trim and store history
+    if len(_business_chat_histories) >= BUSINESS_CHAT_HISTORIES_MAX:
+        _business_chat_histories.pop(next(iter(_business_chat_histories)))
     _business_chat_histories[chat_key] = history[-20:]
 
     # Send photo first if AI requested it
@@ -2488,6 +2490,7 @@ def remove_kb():
 # ─── Rate limiting ────────────────────────────────────────────────────────────
 
 _rate_limit_buckets: dict[int, list[float]] = {}
+BUSINESS_CHAT_HISTORIES_MAX = 10_000
 _business_chat_histories: dict[str, list[dict]] = {}
 
 
@@ -2501,10 +2504,11 @@ def _check_rate_limit(user_id: int) -> bool:
         return False
     bucket.append(now)
     _rate_limit_buckets[user_id] = bucket
-    # Periodic cleanup: if this user has 3x the limit, prune all stale entries
     if len(_rate_limit_buckets) > 1000:
-        cutoff = now - window
-        _rate_limit_buckets.clear()
+        _rate_limit_buckets = {
+            uid: ts for uid, ts in _rate_limit_buckets.items()
+            if any(now - t < window for t in ts)
+        }
     return True
 
 

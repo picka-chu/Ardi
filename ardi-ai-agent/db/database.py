@@ -55,6 +55,12 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE",
         ]
+        if not _is_sqlite(DATABASE_URL):
+            migration_sql.extend([
+                "ALTER TABLE products ALTER COLUMN price TYPE NUMERIC(10,2)",
+                "ALTER TABLE orders ALTER COLUMN total_price TYPE NUMERIC(10,2)",
+                "ALTER TABLE order_items ALTER COLUMN unit_price TYPE NUMERIC(10,2)",
+            ])
         if _is_sqlite(DATABASE_URL):
             # SQLite doesn't support IF NOT EXISTS for columns
             migration_sql = [s.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN") for s in migration_sql]

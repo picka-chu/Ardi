@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import String, BigInteger, Text, DateTime, Float, Boolean, ForeignKey, Integer
+from sqlalchemy import String, BigInteger, Text, DateTime, Boolean, ForeignKey, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -68,7 +68,7 @@ class Product(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    price: Mapped[float] = mapped_column(Float, nullable=True)
+    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     available: Mapped[bool] = mapped_column(Boolean, default=True)
     photo_file_id: Mapped[str] = mapped_column(String(512), nullable=True)
     photo_url: Mapped[str] = mapped_column(Text, nullable=True)
@@ -89,7 +89,7 @@ class Order(Base):
     customer_phone: Mapped[str] = mapped_column(String(50), nullable=True)
     customer_address: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
-    total_price: Mapped[float] = mapped_column(Float, default=0.0)
+    total_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="pending")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -105,7 +105,7 @@ class OrderItem(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
-    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
+    unit_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
 
     order: Mapped["Order"] = relationship("Order", back_populates="items")
 

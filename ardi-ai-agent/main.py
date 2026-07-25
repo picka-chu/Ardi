@@ -29,6 +29,7 @@ from telegram.ext import (
 
 from config import TELEGRAM_TOKEN, SENTRY_DSN
 from db.database import init_db
+import miniapp
 from bot.handlers import (
     start,
     menu_callback,
@@ -144,6 +145,13 @@ async def post_init(app):
 
     bot_info = await app.bot.get_me()
     logger.info("Ardi AI started as @%s (id=%s)", bot_info.username, bot_info.id)
+
+    # Periodic heartbeat for health check
+    async def _heartbeat(_context):
+        import time
+        miniapp.bot_last_heartbeat = time.monotonic()
+
+    app.job_queue.run_repeating(_heartbeat, interval=30, first=10)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):

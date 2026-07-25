@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import uuid4
 import boto3
@@ -22,17 +23,22 @@ def _get_client():
     return _client
 
 
+def _upload_sync(key: str, photo_bytes: bytes) -> str | None:
+    client = _get_client()
+    client.put_object(
+        Bucket=R2_BUCKET,
+        Key=key,
+        Body=photo_bytes,
+        ContentType="image/jpeg",
+    )
+    return f"{R2_PUBLIC_URL}/{key}" if R2_PUBLIC_URL else key
+
+
 async def upload_product_photo(photo_bytes: bytes, business_id: int, product_name: str) -> str | None:
     key = f"products/{business_id}/{uuid4()}-{product_name[:30].replace(' ', '_')}.jpg"
     try:
-        client = _get_client()
-        client.put_object(
-            Bucket=R2_BUCKET,
-            Key=key,
-            Body=photo_bytes,
-            ContentType="image/jpeg",
-        )
-        url = f"{R2_PUBLIC_URL}/{key}" if R2_PUBLIC_URL else key
+        loop = asyncio.get_event_loop()
+        url = await loop.run_in_executor(None, _upload_sync, key, photo_bytes)
         logger.info("Photo uploaded to R2: %s", key)
         return url
     except ClientError as e:
