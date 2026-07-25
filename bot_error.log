@@ -1,0 +1,20 @@
+C:\Users\hp\Documents\Ardi\ardi-ai-agent\main.py:59: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
+  reg_conv = ConversationHandler(
+C:\Users\hp\Documents\Ardi\ardi-ai-agent\main.py:77: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
+  product_conv = ConversationHandler(
+Traceback (most recent call last):
+  File "C:\Users\hp\Documents\Ardi\ardi-ai-agent\main.py", line 115, in <module>
+    asyncio.run(main())
+  File "C:\Users\hp\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hp\Documents\Ardi\ardi-ai-agent\main.py", line 106, in main
+    app.add_handler(MessageHandler(filters.CHANNEL_POST & filters.PHOTO, handle_channel_post))
+                                   ^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'telegram.ext.filters' has no attribute 'CHANNEL_POST'
