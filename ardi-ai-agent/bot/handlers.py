@@ -2036,6 +2036,7 @@ async def handle_business_connection(update: Update, context: ContextTypes.DEFAU
 
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global _business_chat_histories
     message = update.business_message
     if not message:
         return
@@ -2546,6 +2547,7 @@ _business_chat_histories: dict[str, list[dict]] = {}
 
 
 def _check_rate_limit(user_id: int) -> bool:
+    global _rate_limit_buckets
     now = time.monotonic()
     window = RATE_LIMIT_WINDOW
     bucket = _rate_limit_buckets.get(user_id, [])
