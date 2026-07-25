@@ -168,6 +168,7 @@ body{font-family:'Inter',sans-serif;background:var(--tg-bg);color:var(--tg-text)
       <option value="all">All</option>
       <option value="active">Active</option>
       <option value="trial">Trial</option>
+      <option value="suspended">Suspended</option>
       <option value="expired">Expired</option>
       <option value="awaiting_payment">Pending</option>
     </select>
@@ -187,6 +188,15 @@ body{font-family:'Inter',sans-serif;background:var(--tg-bg);color:var(--tg-text)
   <div class="hdr"><div class="hdr-t"><h1>⚙️ Settings</h1></div></div>
   <div class="sh">System</div>
   <div class="crd" id="sysHealth"></div>
+  <div class="sh">📢 Broadcast</div>
+  <div class="crd">
+    <div style="font-size:13px;color:var(--tg-hint);margin-bottom:10px">Send a message to all registered business owners</div>
+    <textarea id="broadcastMsg" style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--tg-text);font-family:inherit;font-size:14px;outline:none;resize:none;min-height:80px;margin-bottom:10px;transition:.2s" placeholder="Type your broadcast message..." onfocus="this.style.borderColor='var(--tg-accent)'" onblur="this.style.borderColor='rgba(255,255,255,.06)'"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1;margin:0" onclick="sendBroadcast()">📨 Send to All</button>
+    </div>
+    <div id="broadcastStatus" style="font-size:12px;color:var(--tg-hint);margin-top:8px;text-align:center"></div>
+  </div>
   <div class="sh">Actions</div>
   <button class="btn btn-p" onclick="backupDB()">💾 Backup Database</button>
   <button class="btn btn-d" onclick="confirmRevoke()">🔒 Revoke All Trials</button>
@@ -373,13 +383,14 @@ function confirmRevoke(){
 async function showBiz(id){
   const d=await api('/api/admin/businesses/'+id);
   if(!d)return;
+  const suspended=d.subscription_status==='suspended';
   $('detailContent').innerHTML=`<div class="crd">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <div class="logo" style="width:48px;height:48px;font-size:22px">${(d.name||'?')[0]}</div>
       <div><div style="font-size:18px;font-weight:700">${esc(d.name)}</div><div style="font-size:13px;color:var(--tg-hint)">ID: ${d.id}</div></div>
     </div>
     <div class="dt-l">
-      <div class="r"><span class="l">Status</span><span class="v"><span class="st st-${d.subscription_status==='active'?'active':d.subscription_status==='trial'?'trial':'expired'}">${esc(d.subscription_status)}</span></span></div>
+      <div class="r"><span class="l">Status</span><span class="v"><span class="st st-${suspended?'no':d.subscription_status==='active'?'active':d.subscription_status==='trial'?'trial':'expired'}">${esc(d.subscription_status)}</span></span></div>
       <div class="r"><span class="l">Plan</span><span class="v">${esc(d.plan||'—')}</span></div>
       <div class="r"><span class="l">Owner</span><span class="v">${esc(d.owner_name||'—')}</span></div>
       <div class="r"><span class="l">Phone</span><span class="v">${esc(d.phone||'—')}</span></div>
@@ -388,8 +399,46 @@ async function showBiz(id){
       <div class="r"><span class="l">AI Active</span><span class="v">${d.ai_active?'✅ Yes':'❌ No'}</span></div>
       <div class="r"><span class="l">Created</span><span class="v">${d.created_at?new Date(d.created_at).toLocaleDateString():'—'}</span></div>
     </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      ${suspended
+        ? `<button class="btn btn-p" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="unsuspendBiz(${d.id})">✅ Unsuspend</button>`
+        : `<button class="btn btn-s" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="suspendBiz(${d.id})">⏸️ Suspend</button>`
+      }
+      <button class="btn btn-d" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="deleteBiz(${d.id})">🗑️ Delete</button>
+    </div>
   </div>`;
   showPage('detail');
+}
+
+async function suspendBiz(id){
+  Telegram.WebApp.showConfirm('Suspend this business? AI will be disabled and owner notified.',async ok=>{
+    if(!ok)return;
+    const d=await api('/api/admin/businesses/'+id+'/suspend',{method:'POST'});
+    if(d&&d.success){toast('⏸️ Business suspended','ok');showBiz(id)}
+  });
+}
+async function unsuspendBiz(id){
+  const d=await api('/api/admin/businesses/'+id+'/unsuspend',{method:'POST'});
+  if(d&&d.success){toast('✅ Business unsuspended','ok');showBiz(id)}
+}
+async function deleteBiz(id){
+  Telegram.WebApp.showConfirm('PERMANENTLY delete this business and all its data? This CANNOT be undone.',async ok=>{
+    if(!ok)return;
+    const d=await api('/api/admin/businesses/'+id+'/delete',{method:'POST'});
+    if(d&&d.success){toast('🗑️ Business deleted','ok');showPage('businesses');loadBiz()}
+  });
+}
+
+async function sendBroadcast(){
+  const msg=$('broadcastMsg').value.trim();
+  if(!msg){toast('Enter a message','er');return}
+  Telegram.WebApp.showConfirm('Send this message to ALL registered business owners?',async ok=>{
+    if(!ok)return;
+    $('broadcastStatus').textContent='Sending...';
+    const d=await api('/api/admin/broadcast',{method:'POST',body:JSON.stringify({message:msg})});
+    if(d&&d.success){toast('📨 Sent to '+d.sent+' businesses','ok');$('broadcastStatus').textContent='Sent to '+d.sent+' businesses';$('broadcastMsg').value=''}
+    else{$('broadcastStatus').textContent='Failed: '+(d&&d.error||'unknown')}
+  });
 }
 
 async function showOrder(id){
@@ -578,6 +627,115 @@ async def api_business_detail(request: Request, biz_id: int):
             }
     except HTTPException:
         raise
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/businesses/{biz_id}/suspend")
+async def api_suspend_business(request: Request, biz_id: int):
+    await _require_admin(request)
+    try:
+        from db.database import async_session
+        from db.models import Business
+        from telegram import Bot
+        from config import TELEGRAM_TOKEN, ADMIN_TELEGRAM_ID
+
+        async with async_session() as s:
+            b = await s.get(Business, biz_id)
+            if not b:
+                return {"error": "Not found"}
+            b.subscription_status = "suspended"
+            b.ai_active = False
+            await s.commit()
+        if ADMIN_TELEGRAM_ID:
+            try:
+                bot = Bot(TELEGRAM_TOKEN)
+                await bot.send_message(int(ADMIN_TELEGRAM_ID), f"⏸️ Business *{b.name}* (ID: {biz_id}) has been suspended.", parse_mode="Markdown")
+            except Exception:
+                pass
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/businesses/{biz_id}/unsuspend")
+async def api_unsuspend_business(request: Request, biz_id: int):
+    await _require_admin(request)
+    try:
+        from db.database import async_session
+        from db.models import Business
+
+        async with async_session() as s:
+            b = await s.get(Business, biz_id)
+            if not b:
+                return {"error": "Not found"}
+            b.subscription_status = "active" if b.subscription_plan else "trial"
+            await s.commit()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/businesses/{biz_id}/delete")
+async def api_delete_business(request: Request, biz_id: int):
+    await _require_admin(request)
+    try:
+        from db.database import async_session
+        from db.models import Business
+        from telegram import Bot
+        from config import TELEGRAM_TOKEN, ADMIN_TELEGRAM_ID
+
+        async with async_session() as s:
+            b = await s.get(Business, biz_id)
+            if not b:
+                return {"error": "Not found"}
+            name = b.name
+            await s.delete(b)
+            await s.commit()
+        if ADMIN_TELEGRAM_ID:
+            try:
+                bot = Bot(TELEGRAM_TOKEN)
+                await bot.send_message(int(ADMIN_TELEGRAM_ID), f"🗑️ Business *{name}* (ID: {biz_id}) has been permanently deleted.", parse_mode="Markdown")
+            except Exception:
+                pass
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/broadcast")
+async def api_broadcast(request: Request):
+    await _require_admin(request)
+    try:
+        body = await request.json()
+        message = body.get("message", "").strip()
+        if not message:
+            return {"error": "Message is required"}
+        from db.database import async_session
+        from db.models import Business
+        from sqlalchemy import select
+        from telegram import Bot
+        from config import TELEGRAM_TOKEN
+        import asyncio
+        bot = Bot(TELEGRAM_TOKEN)
+        async with async_session() as s:
+            rows = (await s.execute(
+                select(Business).where(Business.telegram_chat_id.isnot(None))
+            )).scalars().all()
+        sent = 0
+        failed = 0
+        for b in rows:
+            try:
+                await bot.send_message(
+                    chat_id=b.telegram_chat_id,
+                    text=f"📢 *Admin Announcement*\n\n{message}",
+                    parse_mode="Markdown",
+                )
+                sent += 1
+            except Exception:
+                failed += 1
+            await asyncio.sleep(0.05)
+        return {"success": True, "sent": sent, "failed": failed, "total": len(rows)}
     except Exception as e:
         return {"error": str(e)}
 
