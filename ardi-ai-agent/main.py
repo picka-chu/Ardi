@@ -2,6 +2,7 @@ import logging
 import socket
 import os
 import signal
+import asyncio
 from logging.handlers import TimedRotatingFileHandler
 
 # Force IPv4 only for Telegram API (IPv6 times out). Let all other services resolve normally.
@@ -152,7 +153,17 @@ async def post_init(app):
         import time
         miniapp.bot_last_heartbeat = time.monotonic()
 
-    app.job_queue.run_repeating(_heartbeat, interval=30, first=10)
+    if app.job_queue:
+        app.job_queue.run_repeating(_heartbeat, interval=30, first=10)
+    else:
+        logger.warning("No JobQueue available — heartbeat disabled. Install python-telegram-bot[job-queue]")
+        # Fallback: manual periodic task via asyncio
+        async def _manual_heartbeat():
+            while True:
+                await asyncio.sleep(30)
+                import time
+                miniapp.bot_last_heartbeat = time.monotonic()
+        asyncio.create_task(_manual_heartbeat())
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
