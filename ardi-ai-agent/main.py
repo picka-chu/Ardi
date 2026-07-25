@@ -1,6 +1,5 @@
 import logging
 import socket
-import signal
 import os
 from logging.handlers import TimedRotatingFileHandler
 
@@ -311,7 +310,7 @@ def main():
     app.run_polling(allowed_updates=[
         "message", "callback_query", "channel_post",
         "my_chat_member", "business_connection", "business_message",
-    ], stop_signals=[signal.SIGINT, signal.SIGTERM])
+    ], stop_signals=[])
 
 
 if __name__ == "__main__":

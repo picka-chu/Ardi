@@ -5,8 +5,6 @@ import os
 import threading
 import traceback
 
-import uvicorn
-
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -14,19 +12,21 @@ logging.basicConfig(
 logger = logging.getLogger("run")
 
 
-def start_bot():
-    import main as bot_main
-    try:
-        bot_main.main()
-    except Exception as e:
-        logger.error("Bot thread crashed: %s", e)
-        logger.error(traceback.format_exc())
-        raise
+def start_web():
+    import uvicorn
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run("miniapp:app", host="0.0.0.0", port=port, log_level="info")
 
 
 if __name__ == "__main__":
-    t = threading.Thread(target=start_bot, daemon=True)
+    t = threading.Thread(target=start_web, daemon=True)
     t.start()
+    logger.info("Web server started in background thread")
 
-    port = int(os.getenv("PORT", "8080"))
-    uvicorn.run("miniapp:app", host="0.0.0.0", port=port, log_level="info")
+    from main import main as run_bot
+    try:
+        run_bot()
+    except Exception as e:
+        logger.error("Bot crashed: %s", e)
+        logger.error(traceback.format_exc())
+        raise
