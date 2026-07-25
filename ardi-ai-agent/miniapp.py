@@ -345,12 +345,10 @@ input,textarea,select,button{font-family:inherit}
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-const ID=Telegram.WebApp.initData || new URLSearchParams(window.location.search).get('tgWebAppData') || '';
-console.log('initData at load:', ID ? 'present' : 'EMPTY');
-if(!ID){setTimeout(()=>{const d=Telegram.WebApp.initData;console.log('initData after 1s:',d?'present':'EMPTY');if(d&&!window.__tg_retry){window.__tg_retry=1;location.reload()}},1000)}
-Telegram.WebApp.ready();Telegram.WebApp.expand();
-function gi(){return Telegram.WebApp.initData || ''}
+function gi(){try{var d=Telegram.WebApp.initData;return d||''}catch(e){return''}}
 function hd(){return{"Content-Type":"application/json","X-Telegram-Init-Data":gi()}}
+var _id=gi();if(!_id){var _db=document.createElement('div');_db.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#e74c3c;color:#fff;text-align:center;padding:10px;font-size:13px;font-family:sans-serif';try{_db.textContent='TG.WebApp.initData EMPTY | version='+(Telegram.WebApp.version||'?')+' | ready='+!!Telegram.WebApp.ready+' | url='+window.location.href}catch(e){_db.textContent='TG.WebApp not available: '+e.message};document.body.prepend(_db)}
+Telegram.WebApp.ready();Telegram.WebApp.expand();
 function hd(){return{"Content-Type":"application/json","X-Telegram-Init-Data":ID}}
 function $(i){return document.getElementById(i)}
 function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');requestAnimationFrame(()=>{e.classList.add('s');clearTimeout(e._h);e._h=setTimeout(()=>e.classList.remove('s'),3000)})}
