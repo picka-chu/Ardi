@@ -8,7 +8,7 @@ import logging
 import os
 from collections import defaultdict
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 from telegram.ext import (
     ConversationHandler,
     ContextTypes,
@@ -2519,7 +2519,11 @@ async def _intent_show_help(update, context, business, products, params):
 
 
 def business_kb():
-    return ReplyKeyboardMarkup(MENU_BUTTONS, resize_keyboard=True)
+    btns = [row[:] for row in MENU_BUTTONS]
+    from config import MINI_APP_URL
+    if MINI_APP_URL:
+        btns.append([KeyboardButton("🌐 Open Dashboard", web_app={"url": f"{MINI_APP_URL}/business"})])
+    return ReplyKeyboardMarkup(btns, resize_keyboard=True)
 
 
 def guest_kb():
