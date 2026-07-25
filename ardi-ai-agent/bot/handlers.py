@@ -1580,13 +1580,20 @@ async def product_confirm_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    # Exit conversation if user pressed a menu button
+    action = BUTTON_ACTIONS.get(text)
+    if action and action in BUTTON_DISPATCH:
+        handler = BUTTON_DISPATCH[action]
+        await handler(update, context)
+        return ConversationHandler.END
+
     if context.user_data.get("awaiting_rename"):
-        context.user_data["product_name"] = update.message.text.strip()
+        context.user_data["product_name"] = text
         context.user_data["awaiting_rename"] = False
         await update.message.reply_text(f"Name updated.")
         return await _save_product(update, context)
     elif context.user_data.get("awaiting_reprice"):
-        text = update.message.text.strip()
         price_match = re.search(r"(\d+(?:[.,]\d+)?)", text)
         if price_match:
             context.user_data["product_price"] = float(price_match.group(1).replace(",", ""))
@@ -1597,7 +1604,7 @@ async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT
             return ADD_PRODUCT_CONFIRM
     else:
         # No price in caption, user is sending price as text
-        price_match = re.search(r"(\d+(?:[.,]\d+)?)", update.message.text)
+        price_match = re.search(r"(\d+(?:[.,]\d+)?)", text)
         if price_match:
             context.user_data["product_price"] = float(price_match.group(1).replace(",", ""))
             msg = f"Price set to: *{context.user_data['product_price']:.2f} ETB*"
