@@ -66,9 +66,10 @@ async def init_db():
                 if _column_exists(sync_conn, table, column):
                     continue
                 try:
-                    sync_conn.execute(sql_text(
-                        f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
-                    ))
+                    if _is_sqlite(DATABASE_URL):
+                        sync_conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                    else:
+                        sync_conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"))
                     logger.info("Added column %s.%s", table, column)
                 except Exception as e:
                     logger.warning("Could not add column %s.%s: %s", table, column, e)
@@ -89,7 +90,10 @@ async def init_db():
                 if _column_exists(sync_conn, table, column):
                     continue
                 try:
-                    sync_conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                    if _is_sqlite(DATABASE_URL):
+                        sync_conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                    else:
+                        sync_conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"))
                     logger.info("Added column %s.%s", table, column)
                 except Exception as e:
                     logger.warning("Could not add column %s.%s: %s", table, column, e)
