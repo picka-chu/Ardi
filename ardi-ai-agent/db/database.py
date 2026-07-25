@@ -1,6 +1,7 @@
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 
 from config import DATABASE_URL
 
@@ -60,7 +61,7 @@ async def init_db():
 
         for sql in migration_sql:
             try:
-                await conn.execute(sql)
+                await conn.execute(text(sql))
                 table_col = sql.split("ADD COLUMN")[1].strip().split(" ")[0]
                 logger.info("Ran migration: %s", table_col)
             except Exception as e:
