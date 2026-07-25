@@ -674,7 +674,7 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         "address": business.address or "",
         "phone": business.phone or "",
     }
-    products_list = [{"name": p.name, "price": p.price, "available": p.available} for p in products]
+    products_list = [{"name": p.name, "price": p.price, "available": p.available, "photo_caption": p.photo_caption} for p in products]
 
     order_payment_info = ""
     if business.orders_enabled and business.order_bank_name and business.order_bank_account:
@@ -2021,7 +2021,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         "address": business.address or "",
         "phone": business.phone or "",
     }
-    products_list = [{"name": p.name, "price": p.price, "available": p.available} for p in products]
+    products_list = [{"name": p.name, "price": p.price, "available": p.available, "photo_caption": p.photo_caption} for p in products]
 
     chat_key = f"{connection_id}_{customer_chat_id}"
     history = _business_chat_histories.get(chat_key, [])

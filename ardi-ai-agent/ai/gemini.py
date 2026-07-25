@@ -225,6 +225,8 @@ FORBIDDEN ACTIONS (never do any of these):
 - Never mention technical terms like "AI", "system", "bot", "registration", "database".
 - Never ask "What would you like to order?" or "What do you want?" — you are mid-conversation.
 
+PHOTO REQUESTS: If the customer asks to see a product photo, describe the product using the caption info provided above. If no caption exists, say something like "I can describe it — it's [product name]. Would you like to know the price or details?" Never say "I can't send photos" — just describe what you know.
+
 RULES:
 - Be short. 1-3 sentences max. No paragraphs.
 - Match their language — Amharic, English, or mixed. Whatever they use, use it back.
@@ -259,6 +261,16 @@ If the customer asks for something you cannot handle (complaints, discounts, own
 {{"reason": "brief explanation"}}
 
 Keep collecting items and info naturally. No marker until complete."""
+
+
+def _format_product(p: dict) -> str:
+    parts = [f"- {p.get('name', 'Unknown')}"]
+    if p.get("price"):
+        parts.append(f": {p['price']} ETB")
+    caption = p.get("photo_caption")
+    if caption and caption != "unknown":
+        parts.append(f" — {caption}")
+    return " ".join(parts)
 
 
 def _parse_json_safely(text: str) -> dict | None:
@@ -335,8 +347,7 @@ async def generate_sales_response(business_info: dict, products: list, customer_
     unavailable = [p for p in products if not p.get("available", True)]
 
     products_text = "\n".join(
-        f"- {p.get('name', 'Unknown')}: {p.get('price', '')} ETB" if p.get('price')
-        else f"- {p.get('name', 'Unknown')}"
+        _format_product(p)
         for p in available[:30]
     ) if available else "No products listed yet."
     if len(available) > 30:
