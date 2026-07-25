@@ -29,6 +29,18 @@ from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TE
 
 logger = logging.getLogger(__name__)
 
+
+async def _exit_if_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
+    """If user pressed a keyboard menu button, route and end conversation."""
+    if not update.message or not update.message.text:
+        return None
+    action = BUTTON_ACTIONS.get(update.message.text.strip())
+    if action and action in BUTTON_DISPATCH:
+        await BUTTON_DISPATCH[action](update, context)
+        return ConversationHandler.END
+    return None
+
+
 # ─── Input Validation ────────────────────────────────────────────────────────
 
 MEDIA_GROUP_CACHE: dict[str, float] = {}  # media_group_id -> timestamp
@@ -381,6 +393,9 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def register_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
+
     chat_id = update.effective_chat.id
     user_text = update.message.text.strip()
 
@@ -1246,6 +1261,8 @@ async def hours_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def hours_set_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     text = update.message.text.strip().lower()
     chat_id = update.effective_chat.id
 
@@ -1297,6 +1314,8 @@ async def hours_offline_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def hours_offline_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     text = update.message.text.strip()
     chat_id = update.effective_chat.id
     async with async_session() as session:
@@ -1372,18 +1391,24 @@ async def orders_set_bank_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def orders_set_bank_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     context.user_data["order_bank_name"] = update.message.text.strip()
     await update.message.reply_text("Now send the account number or phone:")
     return ORDER_BANK_ACCOUNT
 
 
 async def orders_set_bank_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     context.user_data["order_bank_account"] = update.message.text.strip()
     await update.message.reply_text("Now send the account holder name:")
     return ORDER_BANK_HOLDER
 
 
 async def orders_set_bank_holder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     chat_id = update.effective_chat.id
     bank = context.user_data.get("order_bank_name", "")
     account = context.user_data.get("order_bank_account", "")
@@ -1580,13 +1605,9 @@ async def product_confirm_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    # Exit conversation if user pressed a menu button
-    action = BUTTON_ACTIONS.get(text)
-    if action and action in BUTTON_DISPATCH:
-        handler = BUTTON_DISPATCH[action]
-        await handler(update, context)
+    if await _exit_if_menu(update, context):
         return ConversationHandler.END
+    text = update.message.text.strip()
 
     if context.user_data.get("awaiting_rename"):
         context.user_data["product_name"] = text
