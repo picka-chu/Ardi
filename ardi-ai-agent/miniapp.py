@@ -9,10 +9,20 @@ Requires: pip install fastapi uvicorn
 import os
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="Ardi AI Admin Panel")
+
+# Admin API key for protecting sensitive endpoints
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
+
+async def _require_admin(request: Request):
+    """Reject requests without a valid admin API key."""
+    auth = request.headers.get("Authorization", "")
+    if ADMIN_API_KEY and auth != f"Bearer {ADMIN_API_KEY}":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 # Bot heartbeat — updated by a periodic task in the bot
 bot_last_heartbeat: float = time.monotonic()
@@ -66,7 +76,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
   <div class="card">
     <h2>⚡ Quick Actions</h2>
-    <button class="btn" onclick="window.Telegram.WebApp.openLink('/api/backup')">💾 Backup DB</button>
+    <button class="btn" onclick="backupDB()">💾 Backup DB</button>
     <button class="btn btn-danger" onclick="alert('Confirm in Telegram bot')">🔒 Revoke All Trials</button>
   </div>
 
@@ -74,12 +84,21 @@ HTML_PAGE = """<!DOCTYPE html>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
+    const ADMIN_API_KEY = "{{ADMIN_API_KEY}}";
+
     Telegram.WebApp.ready();
     Telegram.WebApp.expand();
 
+    function _headers() {{
+      let h = {{"Content-Type": "application/json"}};
+      if (ADMIN_API_KEY) h["Authorization"] = "Bearer " + ADMIN_API_KEY;
+      return h;
+    }}
+
     async function loadStats() {{
       try {{
-        let r = await fetch('/api/stats');
+        let r = await fetch('/api/stats', {{headers: _headers()}});
+        if (!r.ok) throw new Error("HTTP " + r.status);
         let d = await r.json();
         document.getElementById('biz_count').textContent = d.businesses ?? '—';
         document.getElementById('active_subs').textContent = d.active_subscriptions ?? '—';
@@ -89,6 +108,17 @@ HTML_PAGE = """<!DOCTYPE html>
         console.error('Stats fetch failed:', e);
       }}
     }}
+
+    async function backupDB() {{
+      try {{
+        let r = await fetch('/api/backup', {{headers: _headers()}});
+        let d = await r.json();
+        Telegram.WebApp.showAlert(d.message || d.error || "Done");
+      }} catch(e) {{
+        Telegram.WebApp.showAlert("Backup failed: " + e.message);
+      }}
+    }}
+
     loadStats();
   </script>
 </body>
@@ -102,7 +132,8 @@ async def index():
 
 
 @app.get("/api/stats")
-async def stats():
+async def stats(request: Request):
+    await _require_admin(request)
     try:
         from db.database import async_session
         from db.models import Business, User, Order
@@ -126,6 +157,20 @@ async def stats():
             "users": user_count,
             "orders_30d": orders_30d,
         }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/backup")
+@app.get("/api/backup")
+async def api_backup(request: Request):
+    await _require_admin(request)
+    try:
+        from db.backup import backup_database
+        path = await backup_database()
+        if path:
+            return {"success": True, "message": f"Backup saved to {path}"}
+        return {"error": "Backup failed — check logs"}
     except Exception as e:
         return {"error": str(e)}
 

@@ -2,19 +2,15 @@ import io
 import re
 import json
 import time
+import asyncio
 import datetime
 import logging
 import os
-from typing import Optional
 from collections import defaultdict
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
     ConversationHandler,
-    filters,
     ContextTypes,
 )
 
@@ -22,7 +18,7 @@ from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt
-from ai.embeddings import caption_and_embed
+from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
 from bot.translations import _t, lang_kb
 from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, TRIAL_DAYS, CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
@@ -73,13 +69,25 @@ def _validate_text(text: str) -> str | None:
     return None
 
 
+_PRICE_RE = re.compile(r"^\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*$")
+
+
+def _parse_price(s: str) -> float | None:
+    """Parse a price string, accepting only valid thousands separators."""
+    s = s.strip()
+    m = _PRICE_RE.match(s)
+    if not m:
+        return None
+    num_str = m.group(1).replace(",", "")
+    return float(num_str)
+
+
 def _validate_price(price_str: str) -> str | None:
-    try:
-        val = float(price_str.replace(",", ""))
-        if val < 0 or val > MAX_PRICE:
-            return f"Price must be between 0 and {MAX_PRICE:,} ETB."
-    except (ValueError, TypeError):
-        return "Invalid price. Enter a number (e.g. 500)."
+    val = _parse_price(price_str)
+    if val is None:
+        return "Invalid price format. Use numbers only (e.g. 500 or 1,200)."
+    if val < 0 or val > MAX_PRICE:
+        return f"Price must be between 0 and {MAX_PRICE:,} ETB."
     return None
 
 
@@ -166,17 +174,25 @@ async def get_or_create_user(session, telegram_id, business_id=None):
         raise
 
 
-_user_cache: dict[int, str] = {}
+_user_cache: dict[int, tuple[str, float]] = {}
+
+
+def _invalidate_lang_cache():
+    """Clear all cached language entries."""
+    _user_cache.clear()
 
 
 async def get_user_language(telegram_id: int) -> str:
-    """Return language code for a user, with per-process cache."""
-    if telegram_id in _user_cache:
-        return _user_cache[telegram_id]
+    """Return language code for a user, with per-process cache (60s TTL)."""
+    entry = _user_cache.get(telegram_id)
+    if entry:
+        lang, ts = entry
+        if time.monotonic() - ts < 60:
+            return lang
     async with async_session() as session:
         user = await get_user(session, telegram_id)
         lang = user.language if user and user.language else "en"
-    _user_cache[telegram_id] = lang
+    _user_cache[telegram_id] = (lang, time.monotonic())
     return lang
 
 
@@ -206,6 +222,14 @@ async def resolve_identity(telegram_id: int) -> dict:
             "business_description": business.description or "",
             "owner_name": business.name,
         }
+    return {
+        "telegram_id": telegram_id,
+        "role": (user.role if user else "guest"),
+        "business_id": 0,
+        "business_name": "",
+        "business_description": "",
+        "owner_name": "",
+    }
 
 
 async def get_business(session, chat_id):
@@ -586,9 +610,6 @@ async def handle_customer_photo(update: Update, context: ContextTypes.DEFAULT_TY
     file = await photo.get_file()
     image_bytes = await file.download_as_bytearray()
 
-    from ai.embeddings import generate_caption, embed_text, find_best_match_sync
-    import json, asyncio
-
     caption = await generate_caption(bytes(image_bytes))
     if not caption:
         history = context.user_data.get("customer_chat_history", [])
@@ -908,7 +929,7 @@ async def _notify_escalation(context, business, customer_user, reason, customer_
         async with async_session() as session:
             esc = EscalatedChat(
                 business_id=business.id,
-                customer_telegram_id=customer_user.id if customer_user else 0,
+                customer_telegram_id=customer_user.id if customer_user else None,
                 customer_name=customer_name,
                 reason=reason,
                 last_customer_message=customer_message,
@@ -1210,6 +1231,9 @@ async def handle_escalation_reply(update: Update, context: ContextTypes.DEFAULT_
     owner_name = update.effective_user.full_name or "Business Owner"
 
     try:
+        if not esc.customer_telegram_id:
+            await update.message.reply_text("Cannot reply — customer info not available.")
+            return
         msg = (
             f"📬 *Reply from {business.name if business else 'the business'}*\n\n"
             f"{reply_text}\n\n"
@@ -1304,6 +1328,16 @@ async def hours_set_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return BUSINESS_HOURS_SET
 
     start, end = match.group(1), match.group(2)
+
+    def _valid_time(t):
+        parts = t.split(":")
+        h, m = int(parts[0]), int(parts[1])
+        return 0 <= h <= 23 and 0 <= m <= 59
+
+    if not _valid_time(start) or not _valid_time(end):
+        await update.message.reply_text("Invalid time. Hours must be 00-23 and minutes 00-59.", parse_mode="Markdown")
+        return BUSINESS_HOURS_SET
+
     # Normalize single-digit hours (e.g. "9:00" → "09:00")
     def _pad_time(t):
         parts = t.split(":")
@@ -1504,6 +1538,8 @@ async def cmd_addproduct(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _exit_if_menu(update, context):
+        return ConversationHandler.END
     if not _has_photo(update):
         await update.message.reply_text("Please send a photo (not a document or video).")
         return ADD_PRODUCT_PHOTO
@@ -1526,7 +1562,7 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     price_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(birr|etb|br)\b", caption, re.IGNORECASE)
     if price_match:
-        price = float(price_match.group(1).replace(",", ""))
+        price = _parse_price(price_match.group(1))
 
     business_id = context.user_data.get("product_business_id")
     photo_url = await upload_product_photo(photo_bytes, business_id, product_name)
@@ -1643,7 +1679,7 @@ async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT
     elif context.user_data.get("awaiting_reprice"):
         price_match = re.search(r"(\d+(?:[.,]\d+)?)", text)
         if price_match:
-            context.user_data["product_price"] = float(price_match.group(1).replace(",", ""))
+            context.user_data["product_price"] = _parse_price(price_match.group(1))
             context.user_data["awaiting_reprice"] = False
             return await _save_product(update, context)
         else:
@@ -1653,7 +1689,7 @@ async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT
         # No price in caption, user is sending price as text
         price_match = re.search(r"(\d+(?:[.,]\d+)?)", text)
         if price_match:
-            context.user_data["product_price"] = float(price_match.group(1).replace(",", ""))
+            context.user_data["product_price"] = _parse_price(price_match.group(1))
             msg = f"Price set to: *{context.user_data['product_price']:.2f} ETB*"
             await update.message.reply_text(msg, parse_mode="Markdown",
                                             reply_markup=InlineKeyboardMarkup([
@@ -1905,7 +1941,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     result = await identify_product(photo_bytes)
     product_name = result.get("name", "unknown")
-    price = float(price_match.group(1).replace(",", ""))
+    price = _parse_price(price_match.group(1))
 
     photo_url = await upload_product_photo(photo_bytes, business.id, product_name)
 
@@ -1941,11 +1977,12 @@ async def cmd_sync_connection(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
+    bot_username = context.bot.username
     await update.message.reply_text(
-        "📋 *Sync Ardi AI with Your Telegram Business*\n\n"
+        f"📋 *Sync Ardi AI with Your Telegram Business*\n\n"
         "Step 1: Open Telegram Settings → Business → Chat Automation\n"
-        "Step 2: If @ardiassistantbot is already there, **disconnect it first**\n"
-        "Step 3: **Reconnect** @ardiassistantbot\n\n"
+        f"Step 2: If @{bot_username} is already there, **disconnect it first**\n"
+        f"Step 3: **Reconnect** @{bot_username}\n\n"
         "I'll detect the connection and confirm here within a few seconds. 🚀",
         parse_mode="Markdown",
     )
@@ -2000,13 +2037,21 @@ async def handle_business_connection(update: Update, context: ContextTypes.DEFAU
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.business_message
-    if not message or not message.text:
+    if not message:
         return
 
     connection_id = message.business_connection_id
     customer_chat_id = message.chat_id
-    customer_text = message.text
-    logger.info(f"Business message from customer %s on connection %s", customer_chat_id, connection_id)
+
+    if message.text:
+        customer_text = message.text
+    elif message.photo:
+        logger.info("Business photo message from customer %s on connection %s - not yet supported", customer_chat_id, connection_id)
+        return
+    else:
+        return
+
+    logger.info("Business text message from customer %s on connection %s", customer_chat_id, connection_id)
 
     async with async_session() as session:
         result = await session.execute(
@@ -2318,13 +2363,15 @@ async def _intent_add_product(update, context, business, products, params):
     if state == "awaiting_product_price" and price is None:
         import re
         text = update.message.text.strip()
-        m = re.search(r"(\d+(?:[.,]\d+)?)", text.replace(",", ""))
+        m = re.search(r"(\d+(?:[.,]\d+)*)", text)
         if m:
-            price = m.group(1)
+            price = str(_parse_price(m.group(1)) or "")
 
     if name and price is not None:
         try:
-            price_val = float(str(price).replace("birr", "").replace("br", "").replace("ETB", "").strip())
+            price_val = _parse_price(str(price))
+            if price_val is None:
+                raise ValueError(f"Invalid price: {price}")
             async with async_session() as session:
                 session.add(Product(business_id=business.id, name=name, price=price_val))
                 await session.commit()
@@ -2870,7 +2917,6 @@ from config import MINI_APP_URL
 
 
 def _super_admin_kb():
-    from config import MINI_APP_URL
     buttons = []
     if MINI_APP_URL:
         buttons.append([InlineKeyboardButton("🚀 Open Admin Panel", web_app={"url": MINI_APP_URL})])
@@ -2990,6 +3036,9 @@ async def subscription_callback(update: Update, context: ContextTypes.DEFAULT_TY
         "*After paying, send a screenshot of the receipt here.*\n"
         "I'll verify it automatically!",
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📩 Notify Admin I've Paid", callback_data=f"sub_paid_{biz_id}_{plan}")],
+        ]),
     )
 
 

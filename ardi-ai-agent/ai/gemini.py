@@ -3,13 +3,27 @@ import logging
 import asyncio
 import time
 import random
+import re
+import traceback
+import threading
 from google import genai
 from google.genai import types
 
 from config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
-client = genai.Client(api_key=GEMINI_API_KEY)
+
+_client = None
+_client_lock = threading.Lock()
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = genai.Client(api_key=GEMINI_API_KEY)
+    return _client
 
 MODELS = [
     "gemini-3.5-flash-lite",
@@ -45,7 +59,7 @@ def _call_model_sync(contents, model_index=0, attempt=0, system_instruction=None
             kwargs["config"] = types.GenerateContentConfig(
                 system_instruction=system_instruction
             )
-        response = client.models.generate_content(**kwargs)
+        response = _get_client().models.generate_content(**kwargs)
         text = response.text
         if text is None:
             logger.warning("Model %s returned None text, candidates=%s", model, getattr(response, 'candidates', None))
@@ -279,7 +293,6 @@ def _format_product(p: dict) -> str:
 
 def _parse_json_safely(text: str) -> dict | None:
     """Parse a JSON object from text. Returns None if result is not a dict."""
-    import re
     text = text.strip()
     code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if code_match:
@@ -341,7 +354,6 @@ def _sales_chat_sync(business_info: dict, products_text: str, products_unavailab
 
         return {"type": "chat", "reply": text}
     except Exception as e:
-        import traceback
         logger.error("Sales response error: %s\n%s", e, traceback.format_exc())
         return {"type": "chat", "reply": "Sorry, give me a moment — what did you ask again?"}
 

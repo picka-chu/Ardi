@@ -7,13 +7,14 @@ Run with: python -m pytest tests/test_integration.py -v --asyncio-mode=auto
 import pytest
 import sys
 import os
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-os.environ["GEMINI_API_KEY"] = "test-key"
-os.environ["TELEGRAM_TOKEN"] = "123:fake"
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_ardi.db"
-os.environ["ADMIN_TELEGRAM_ID"] = "99999"
+os.environ.setdefault("GEMINI_API_KEY", "test-key")
+os.environ.setdefault("TELEGRAM_TOKEN", "123:fake")
+os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{tempfile.mktemp(suffix='.db')}")
+os.environ.setdefault("ADMIN_TELEGRAM_ID", "99999")
 
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select

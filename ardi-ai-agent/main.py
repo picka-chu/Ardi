@@ -1,6 +1,7 @@
 import logging
 import socket
 import os
+import signal
 from logging.handlers import TimedRotatingFileHandler
 
 # Force IPv4 only for Telegram API (IPv6 times out). Let all other services resolve normally.
@@ -186,6 +187,7 @@ def main():
             CommandHandler("cancel", cancel),
         ],
         per_message=False,
+        conversation_timeout=300,
     )
 
     # Add product conversation
@@ -209,6 +211,7 @@ def main():
             CommandHandler("cancel", cancel),
         ],
         per_message=False,
+        conversation_timeout=300,
     )
 
     app.add_handler(CommandHandler("start", start))
@@ -244,6 +247,7 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_callback, pattern="^main_menu$")],
         per_message=False,
+        conversation_timeout=120,
     )
     app.add_handler(hours_conv)
 
@@ -254,6 +258,7 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_callback, pattern="^main_menu$")],
         per_message=False,
+        conversation_timeout=120,
     )
     app.add_handler(hours_msg_conv)
 
@@ -267,6 +272,7 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_callback, pattern="^main_menu$")],
         per_message=False,
+        conversation_timeout=120,
     )
     app.add_handler(orders_conv)
 
@@ -318,7 +324,7 @@ def main():
     app.run_polling(allowed_updates=[
         "message", "callback_query", "channel_post",
         "my_chat_member", "business_connection", "business_message",
-    ], stop_signals=[])
+    ], stop_signals=[signal.SIGINT, signal.SIGTERM])
 
 
 if __name__ == "__main__":

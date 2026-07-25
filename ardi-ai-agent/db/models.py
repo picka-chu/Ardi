@@ -115,7 +115,7 @@ class EscalatedChat(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), nullable=False, index=True)
-    customer_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    customer_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     customer_name: Mapped[str] = mapped_column(String(255), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=True)
     last_customer_message: Mapped[str] = mapped_column(Text, nullable=True)

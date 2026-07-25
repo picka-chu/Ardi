@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from uuid import uuid4
 import boto3
 from botocore.exceptions import ClientError
@@ -9,17 +10,20 @@ from config import R2_ACCESS_KEY, R2_SECRET_KEY, R2_ENDPOINT, R2_BUCKET, R2_PUBL
 logger = logging.getLogger(__name__)
 
 _client = None
+_client_lock = threading.Lock()
 
 
 def _get_client():
     global _client
     if _client is None:
-        _client = boto3.client(
-            "s3",
-            endpoint_url=R2_ENDPOINT,
-            aws_access_key_id=R2_ACCESS_KEY,
-            aws_secret_access_key=R2_SECRET_KEY,
-        )
+        with _client_lock:
+            if _client is None:
+                _client = boto3.client(
+                    "s3",
+                    endpoint_url=R2_ENDPOINT,
+                    aws_access_key_id=R2_ACCESS_KEY,
+                    aws_secret_access_key=R2_SECRET_KEY,
+                )
     return _client
 
 

@@ -2,13 +2,26 @@ import json
 import logging
 import time
 import random
+import asyncio
+import threading
 from google import genai
 from google.genai import types
 
 from config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
-client = genai.Client(api_key=GEMINI_API_KEY)
+
+_embed_client = None
+_embed_lock = threading.Lock()
+
+
+def _get_embed_client():
+    global _embed_client
+    if _embed_client is None:
+        with _embed_lock:
+            if _embed_client is None:
+                _embed_client = genai.Client(api_key=GEMINI_API_KEY)
+    return _embed_client
 
 EMBED_MODEL = "text-embedding-004"
 CAPTION_MODEL = "gemini-2.5-flash"
@@ -22,7 +35,7 @@ Return ONLY the description, no extra text."""
 def _generate_caption_sync(image_bytes: bytes) -> str:
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.models.generate_content(
+            response = _get_embed_client().models.generate_content(
                 model=CAPTION_MODEL,
                 contents=types.Content(parts=[
                     types.Part(text=CAPTION_PROMPT),
@@ -44,7 +57,7 @@ def _embed_text_sync(text: str) -> list[float]:
         return []
     for attempt in range(MAX_RETRIES):
         try:
-            result = client.models.embed_content(
+            result = _get_embed_client().models.embed_content(
                 model=EMBED_MODEL,
                 contents=text,
             )
@@ -91,8 +104,6 @@ def find_best_match_sync(customer_caption: str, customer_embedding: list[float],
 
 
 # ─── Async wrappers ──────────────────────────────────────────────────────────
-
-import asyncio
 
 
 async def generate_caption(image_bytes: bytes) -> str:
