@@ -1,10 +1,8 @@
 """Mini app web server for Ardi AI."""
-import os, time, hmac, hashlib, json, logging
-from urllib.parse import parse_qs
+import os, time, hmac, hashlib, json
+from urllib.parse import unquote_plus
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
-
-logger = logging.getLogger("miniapp")
 
 app = FastAPI(title="Ardi AI")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
@@ -21,22 +19,20 @@ async def _require_admin(request: Request):
 
 def _validate_init_data(init_data: str) -> dict | None:
     try:
-        parsed = parse_qs(init_data)
-        items = sorted((k, v[0]) for k, v in parsed.items() if k != "hash")
-        data_check = "\n".join(f"{k}={v}" for k, v in items)
+        parsed = {}
+        for part in init_data.split("&"):
+            if "=" not in part:
+                continue
+            k, v = part.split("=", 1)
+            parsed[unquote_plus(k)] = unquote_plus(v)
+        data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()) if k != "hash")
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
-        expected = parsed.get("hash", [None])[0]
-        if computed != expected:
-            logger.warning("init_data=%.300s", init_data)
-            logger.warning("data_check=%s", data_check)
-            logger.warning("items=%s", items)
-            logger.warning("computed=%s expected=%s", computed, expected)
+        if computed != parsed.get("hash", ""):
             return None
-        user_raw = parsed.get("user", [None])[0]
+        user_raw = parsed.get("user", "")
         return json.loads(user_raw) if user_raw else None
-    except Exception as exc:
-        logger.warning("_validate_init_data error: %s", exc, exc_info=True)
+    except Exception:
         return None
 
 
