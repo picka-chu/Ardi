@@ -1530,6 +1530,9 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     business_id = context.user_data.get("product_business_id")
     photo_url = await upload_product_photo(photo_bytes, business_id, product_name)
+    if not photo_url:
+        photo_url = photo.file_id
+        logger.info("R2 upload failed, falling back to Telegram file_id")
 
     context.user_data["product_name"] = product_name
     context.user_data["product_price"] = price
