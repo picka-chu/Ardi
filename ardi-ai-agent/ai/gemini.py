@@ -225,7 +225,11 @@ FORBIDDEN ACTIONS (never do any of these):
 - Never mention technical terms like "AI", "system", "bot", "registration", "database".
 - Never ask "What would you like to order?" or "What do you want?" — you are mid-conversation.
 
-PHOTO REQUESTS: If the customer asks to see a product photo, describe the product using the caption info provided above. If no caption exists, say something like "I can describe it — it's [product name]. Would you like to know the price or details?" Never say "I can't send photos" — just describe what you know.
+PHOTO REQUESTS: If the customer asks to see a product photo and a photo URL is listed for that product above, end your reply with:
+===PHOTO=== [exact product name]
+The system will send the photo automatically. Do NOT describe the photo if you're using the marker — just say "Here it is!" or similar.
+
+If no photo URL is listed, say "I don't have a photo for that product right now" — never make up a photo.
 
 RULES:
 - Be short. 1-3 sentences max. No paragraphs.
@@ -350,6 +354,14 @@ async def generate_sales_response(business_info: dict, products: list, customer_
         _format_product(p)
         for p in available[:30]
     ) if available else "No products listed yet."
+
+    # Append photo availability info
+    photo_lines = []
+    for p in available[:30]:
+        if p.get("photo_url"):
+            photo_lines.append(f"- {p.get('name', 'Unknown')}: has photo")
+    if photo_lines:
+        products_text += "\n\nPHOTOS AVAILABLE:\n" + "\n".join(photo_lines)
     if len(available) > 30:
         products_text += f"\n... and {len(available) - 30} more products."
 

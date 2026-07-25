@@ -696,6 +696,29 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
     history.append({"role": "user", "text": update.message.text})
     reply_text = response["reply"]
 
+    # Handle photo request marker
+    photo_url_to_send = None
+    if "===PHOTO===" in reply_text:
+        parts = reply_text.split("===PHOTO===")
+        reply_text = parts[0].strip()
+        photo_product = parts[1].strip() if len(parts) > 1 else ""
+        for p in products:
+            if p.name.lower() == photo_product.lower():
+                photo_url_to_send = p.photo_url
+                break
+        if not photo_url_to_send:
+            for p in products:
+                if p.photo_url:
+                    photo_url_to_send = p.photo_url
+                    break
+
+    # Send photo before any reply if AI requested it
+    if photo_url_to_send:
+        try:
+            await update.message.reply_photo(photo=photo_url_to_send)
+        except Exception as e:
+            logger.warning("Failed to send product photo: %s", e)
+
     if response.get("type") == "order":
         data = response["data"]
 
@@ -2046,6 +2069,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     history.append({"role": "user", "text": customer_text})
     reply_text = response["reply"]
 
+    # Handle photo request marker
+    photo_url_to_send = None
+    if "===PHOTO===" in reply_text:
+        parts = reply_text.split("===PHOTO===")
+        reply_text = parts[0].strip()
+        photo_product = parts[1].strip() if len(parts) > 1 else ""
+        for p in products:
+            if p.name.lower() == photo_product.lower():
+                photo_url_to_send = p.photo_url
+                break
+        # Fallback: try first product with a photo
+        if not photo_url_to_send:
+            for p in products:
+                if p.photo_url:
+                    photo_url_to_send = p.photo_url
+                    break
+
     if response.get("type") == "order":
         data = response["data"]
         order = await _create_order(business, None, data, products)
@@ -2092,6 +2132,17 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
     # Trim and store history
     _business_chat_histories[chat_key] = history[-20:]
+
+    # Send photo first if AI requested it
+    if photo_url_to_send:
+        try:
+            await context.bot.send_photo(
+                chat_id=customer_chat_id,
+                photo=photo_url_to_send,
+                business_connection_id=connection_id,
+            )
+        except Exception as e:
+            logger.warning("Failed to send product photo: %s", e)
 
     try:
         await context.bot.send_message(
