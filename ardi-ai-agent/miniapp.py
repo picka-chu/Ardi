@@ -18,9 +18,14 @@ for mod in ("fastapi", "uvicorn"):
         subprocess.check_call([sys.executable, "-m", "pip", "install", mod])
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="Ardi AI Admin Panel")
+
+
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health():
+    return Response(status_code=200)
 
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="en">
