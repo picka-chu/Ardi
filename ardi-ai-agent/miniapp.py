@@ -1,8 +1,10 @@
 """Mini app web server for Ardi AI."""
-import os, time, hmac, hashlib, json
+import os, time, hmac, hashlib, json, logging
 from urllib.parse import unquote_plus
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
+
+logger = logging.getLogger("miniapp")
 
 app = FastAPI(title="Ardi AI")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
@@ -19,20 +21,44 @@ async def _require_admin(request: Request):
 
 def _validate_init_data(init_data: str) -> dict | None:
     try:
-        parsed = {}
+        # Parse without URL-decoding values (keep raw)
+        raw = {}
         for part in init_data.split("&"):
             if "=" not in part:
                 continue
             k, v = part.split("=", 1)
-            parsed[unquote_plus(k)] = unquote_plus(v)
-        data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()) if k != "hash")
+            raw[unquote_plus(k)] = v  # keep raw/encoded value
+
+        # Parse with URL-decoding
+        decoded = {}
+        for k, v in raw.items():
+            decoded[k] = unquote_plus(v)
+
+        # Try decoded values first (Telegram docs say use URL-decoded)
+        data_check_decoded = "\n".join(f"{k}={v}" for k, v in sorted(decoded.items()) if k != "hash")
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-        computed = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
-        if computed != parsed.get("hash", ""):
-            return None
-        user_raw = parsed.get("user", "")
-        return json.loads(user_raw) if user_raw else None
-    except Exception:
+        computed_decoded = hmac.new(secret_key, data_check_decoded.encode(), hashlib.sha256).hexdigest()
+        expected = decoded.get("hash", "")
+
+        if computed_decoded == expected:
+            user_raw = decoded.get("user", "")
+            return json.loads(user_raw) if user_raw else None
+
+        # Try raw (URL-encoded) values
+        data_check_raw = "\n".join(f"{k}={v}" for k, v in sorted(raw.items()) if k != "hash")
+        computed_raw = hmac.new(secret_key, data_check_raw.encode(), hashlib.sha256).hexdigest()
+
+        if computed_raw == expected:
+            user_raw = decoded.get("user", "")
+            return json.loads(user_raw) if user_raw else None
+
+        logger.warning("init_data=%.400s", init_data)
+        logger.warning("decoded_items=%s", sorted(decoded.items()))
+        logger.warning("raw_items=%s", sorted(raw.items()))
+        logger.warning("computed_decoded=%s computed_raw=%s expected=%s", computed_decoded, computed_raw, expected)
+        return None
+    except Exception as exc:
+        logger.warning("_validate_init_data error: %s", exc, exc_info=True)
         return None
 
 
