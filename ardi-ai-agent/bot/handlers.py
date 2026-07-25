@@ -1952,14 +1952,13 @@ async def handle_business_connection(update: Update, context: ContextTypes.DEFAU
             return
 
         logger.info(f"Business connected: {business.name} (id={business.id})")
-        result = await session.execute(
-            select(BusinessConnectionModel).where(BusinessConnectionModel.connection_id == connection_id)
+        # Remove any stale connections for this business
+        old = await session.execute(
+            select(BusinessConnectionModel).where(BusinessConnectionModel.business_id == business.id)
         )
-        existing = result.scalar_one_or_none()
-        if existing:
-            existing.user_chat_id = user_chat_id
-        else:
-            session.add(BusinessConnectionModel(business_id=business.id, connection_id=connection_id, user_chat_id=user_chat_id))
+        for stale in old.scalars().all():
+            await session.delete(stale)
+        session.add(BusinessConnectionModel(business_id=business.id, connection_id=connection_id, user_chat_id=user_chat_id))
         await session.commit()
 
         try:
@@ -2099,10 +2098,38 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             chat_id=customer_chat_id,
             text=reply_text,
             business_connection_id=connection_id,
-            parse_mode="Markdown",
         )
     except Exception as e:
-        logger.error(f"Business message send error: %s", e)
+        err_str = str(e)
+        logger.error(f"Business message send error: %s", err_str)
+        if "Business_peer_invalid" in err_str:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(BusinessConnectionModel).where(BusinessConnectionModel.connection_id == connection_id)
+                )
+                stale = result.scalar_one_or_none()
+                if stale:
+                    await session.delete(stale)
+                    await session.commit()
+                    logger.info("Deleted stale business connection: %s", connection_id)
+            try:
+                await context.bot.send_message(
+                    chat_id=business.telegram_chat_id,
+                    text=(
+                        "⚠️ *Business Connection Lost*\n\n"
+                        "Your Telegram Business connection is no longer valid.\n\n"
+                        "Possible causes:\n"
+                        "• Your Telegram Business subscription expired\n"
+                        "• You disconnected the bot in Business settings\n\n"
+                        "To fix: Open Telegram Settings → Business and check:\n"
+                        "1. Your Business subscription is active\n"
+                        "2. Chat Automation has @ardiassistantbot connected\n"
+                        "3. Then use /sync to reconnect."
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
 
 
 # ─── Reply Keyboards ───────────────────────────────────────────────────────
