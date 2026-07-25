@@ -412,7 +412,7 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["reg_conversation"].append({"role": "assistant", "text": ardi_message})
 
     await _send_or_edit(update, f"🤖 *Ardi AI Assistant*\n\n{ardi_message}", parse_mode="Markdown",
-                        reply_markup=remove_kb())
+                        reply_markup=back_kb())
     return REGISTER_CONVERSATION
 
 
@@ -476,10 +476,11 @@ async def register_conversation(update: Update, context: ContextTypes.DEFAULT_TY
         reply = result.get("reply", "")
         conversation.append({"role": "assistant", "text": reply})
         context.user_data["reg_conversation"] = conversation
-        await update.message.reply_text(reply, parse_mode="Markdown")
+        await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=back_kb())
         return REGISTER_CONVERSATION
     else:
-        await update.message.reply_text(result.get("reply", "Let me try again — what's your business name?"))
+        await update.message.reply_text(result.get("reply", "Let me try again — what's your business name?"),
+                                        reply_markup=back_kb())
         return REGISTER_CONVERSATION
 
 
@@ -1303,7 +1304,7 @@ async def hours_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Enter your business hours in 24h format, e.g. `09:00-18:00`\n"
         "Or send `off` to disable.",
         parse_mode="Markdown",
-        reply_markup=remove_kb())
+        reply_markup=back_kb())
     return BUSINESS_HOURS_SET
 
 
@@ -1324,7 +1325,8 @@ async def hours_set_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     match = re.match(r"^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$", text)
     if not match:
-        await update.message.reply_text("Invalid format. Use `09:00-18:00` (24h).", parse_mode="Markdown")
+        await update.message.reply_text("Invalid format. Use `09:00-18:00` (24h).", parse_mode="Markdown",
+                                        reply_markup=back_kb())
         return BUSINESS_HOURS_SET
 
     start, end = match.group(1), match.group(2)
@@ -1335,7 +1337,8 @@ async def hours_set_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return 0 <= h <= 23 and 0 <= m <= 59
 
     if not _valid_time(start) or not _valid_time(end):
-        await update.message.reply_text("Invalid time. Hours must be 00-23 and minutes 00-59.", parse_mode="Markdown")
+        await update.message.reply_text("Invalid time. Hours must be 00-23 and minutes 00-59.", parse_mode="Markdown",
+                                        reply_markup=back_kb())
         return BUSINESS_HOURS_SET
 
     # Normalize single-digit hours (e.g. "9:00" → "09:00")
@@ -1364,9 +1367,9 @@ async def hours_offline_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     await _send_or_edit(update,
         "Send the message customers will see when you're offline.\n\n"
         "Example: *We're currently closed. We'll reply during business hours.*\n\n"
-        "Send /cancel to keep current message.",
+        "Tap 🔙 Main Menu to keep current message.",
         parse_mode="Markdown",
-        reply_markup=remove_kb())
+        reply_markup=back_kb())
     return BUSINESS_HOURS_MSG
 
 
@@ -1443,7 +1446,8 @@ async def orders_toggle_callback(update: Update, context: ContextTypes.DEFAULT_T
 async def orders_set_bank_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await _send_or_edit(update, "Send the bank name (e.g. CBE, Telebirr, Dashen):")
+    await _send_or_edit(update, "Send the bank name (e.g. CBE, Telebirr, Dashen):",
+                        reply_markup=back_kb())
     return ORDER_BANK_NAME
 
 
@@ -1451,7 +1455,7 @@ async def orders_set_bank_name(update: Update, context: ContextTypes.DEFAULT_TYP
     if await _exit_if_menu(update, context):
         return ConversationHandler.END
     context.user_data["order_bank_name"] = update.message.text.strip()
-    await update.message.reply_text("Now send the account number or phone:")
+    await update.message.reply_text("Now send the account number or phone:", reply_markup=back_kb())
     return ORDER_BANK_ACCOUNT
 
 
@@ -1459,7 +1463,7 @@ async def orders_set_bank_account(update: Update, context: ContextTypes.DEFAULT_
     if await _exit_if_menu(update, context):
         return ConversationHandler.END
     context.user_data["order_bank_account"] = update.message.text.strip()
-    await update.message.reply_text("Now send the account holder name:")
+    await update.message.reply_text("Now send the account holder name:", reply_markup=back_kb())
     return ORDER_BANK_HOLDER
 
 
@@ -1532,7 +1536,7 @@ async def cmd_addproduct(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Ardi AI will automatically identify the product name.\n"
         "Add the price in the caption (e.g., *500 birr*).",
         parse_mode="Markdown",
-        reply_markup=remove_kb())
+        reply_markup=back_kb())
     context.user_data["product_business_id"] = business.id
     return ADD_PRODUCT_PHOTO
 
@@ -1541,7 +1545,8 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _exit_if_menu(update, context):
         return ConversationHandler.END
     if not _has_photo(update):
-        await update.message.reply_text("Please send a photo (not a document or video).")
+        await update.message.reply_text("Please send a photo (not a document or video).",
+                                        reply_markup=back_kb())
         return ADD_PRODUCT_PHOTO
     if _is_media_group_duplicate(update):
         return ADD_PRODUCT_PHOTO
@@ -1592,7 +1597,7 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown",
                                         reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=back_kb())
     return ADD_PRODUCT_CONFIRM
 
 
@@ -1650,11 +1655,15 @@ async def product_confirm_callback(update: Update, context: ContextTypes.DEFAULT
     if data == "product_save":
         await _save_product(update, context)
     elif data == "product_rename":
-        await query.edit_message_text("What should the product name be?")
+        await query.edit_message_text("What should the product name be?",
+                                      reply_markup=InlineKeyboardMarkup(
+                                          [[InlineKeyboardButton("❌ Cancel", callback_data="product_cancel")]]))
         context.user_data["awaiting_rename"] = True
         return ADD_PRODUCT_CONFIRM
     elif data == "product_reprice":
-        await query.edit_message_text("Enter the price (e.g., *500 birr*):", parse_mode="Markdown")
+        await query.edit_message_text("Enter the price (e.g., *500 birr*):", parse_mode="Markdown",
+                                      reply_markup=InlineKeyboardMarkup(
+                                          [[InlineKeyboardButton("❌ Cancel", callback_data="product_cancel")]]))
         context.user_data["awaiting_reprice"] = True
         return ADD_PRODUCT_CONFIRM
     elif data == "product_cancel":
@@ -1683,7 +1692,8 @@ async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT
             context.user_data["awaiting_reprice"] = False
             return await _save_product(update, context)
         else:
-            await update.message.reply_text("Please enter a valid number (e.g., *500*).", parse_mode="Markdown")
+            await update.message.reply_text("Please enter a valid number (e.g., *500*).", parse_mode="Markdown",
+                                            reply_markup=back_kb())
             return ADD_PRODUCT_CONFIRM
     else:
         # No price in caption, user is sending price as text
@@ -1697,7 +1707,8 @@ async def add_product_text_handler(update: Update, context: ContextTypes.DEFAULT
                                                 [InlineKeyboardButton("❌ Cancel", callback_data="product_cancel")],
                                             ]))
             return ADD_PRODUCT_CONFIRM
-        await update.message.reply_text("Please enter a price like *500 birr*.", parse_mode="Markdown")
+        await update.message.reply_text("Please enter a price like *500 birr*.", parse_mode="Markdown",
+                                        reply_markup=back_kb())
         return ADD_PRODUCT_CONFIRM
 
 
