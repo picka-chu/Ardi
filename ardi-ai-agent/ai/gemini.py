@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODELS = [
-    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
 ]
 
 MAX_RETRIES = 3
