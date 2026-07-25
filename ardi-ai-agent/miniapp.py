@@ -20,7 +20,7 @@ async def _require_admin(request: Request):
 def _validate_init_data(init_data: str) -> dict | None:
     try:
         parsed = parse_qs(init_data)
-        data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()) if k != "hash")
+        data_check = "\n".join(f"{k}={v[0]}" for k, v in sorted(parsed.items()) if k != "hash")
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
         if computed != parsed.get("hash", [None])[0]:
