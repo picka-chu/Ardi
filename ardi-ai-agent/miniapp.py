@@ -187,7 +187,7 @@ input,textarea,select,button{font-family:inherit}
 
 <div class="pg" id="pg-ord"><div class="hd"><div class="ht"><h1>📦 Orders</h1><p id="oc">—</p></div></div><div class="mg" id="os"></div><div class="cd" id="ol"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>⚙️ Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">📢 Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">📨 Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">💾 Backup Database</button><button class="btn bdg" onclick="cr()">🔒 Revoke All Trials</button></div>
+<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>⚙️ Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">💳 Payment Methods</div><div class="cd" id="pmc"><div class="em">Loading...</div></div><div class="sh">📢 Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">📨 Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">💾 Backup Database</button><button class="btn bdg" onclick="cr()">🔒 Revoke All Trials</button></div>
 
 <div class="pg" id="pg-dtl"><button class="bk" onclick="sp('dash')">← Back</button><div id="dc"></div></div>
 
@@ -224,7 +224,14 @@ const os=d.orders||[];if(!os.length){$('ol').innerHTML='<div class="em">No order
 $('ol').innerHTML=os.map(o=>`<div class="li" onclick="so(${o.id})"><div class="la">#${o.id}</div><div class="lb"><div class="lt">${es(o.customer_name||'Customer')}</div><div class="ls">${es(o.business_name||'')}</div></div><div class="lr"><div style="font-weight:700">ETB ${(+o.total_price).toLocaleString()}</div><span class="st ${o.status==='pending'?'sp':o.status==='confirmed'?'sa':o.status==='completed'?'skk':'sx'}">${es(o.status)}</span></div></div>`).join('')}
 
 async function lse(){const d=await ap('/api/admin/system');if(!d)return
-$('shl').innerHTML=`<div class="dl"><div class="rw"><span class="lb">Bot</span><span class="vl"><span class="st ${d.bot_online?'skk':'sx'}">${d.bot_online?'Online':'Offline'}</span></span></div><div class="rw"><span class="lb">Uptime</span><span class="vl">${es(d.uptime||'—')}</span></div><div class="rw"><span class="lb">DB</span><span class="vl">${es(d.database||'—')}</span></div><div class="rw"><span class="lb">Businesses</span><span class="vl">${d.businesses||0}</span></div><div class="rw"><span class="lb">Orders</span><span class="vl">${d.orders||0}</span></div><div class="rw"><span class="lb">Users</span><span class="vl">${d.users||0}</span></div></div>`}
+$('shl').innerHTML=`<div class="dl"><div class="rw"><span class="lb">Bot</span><span class="vl"><span class="st ${d.bot_online?'skk':'sx'}">${d.bot_online?'Online':'Offline'}</span></span></div><div class="rw"><span class="lb">Uptime</span><span class="vl">${es(d.uptime||'—')}</span></div><div class="rw"><span class="lb">DB</span><span class="vl">${es(d.database||'—')}</span></div><div class="rw"><span class="lb">Businesses</span><span class="vl">${d.businesses||0}</span></div><div class="rw"><span class="lb">Orders</span><span class="vl">${d.orders||0}</span></div><div class="rw"><span class="lb">Users</span><span class="vl">${d.users||0}</span></div></div>`
+// Load payment methods
+lpm()}
+async function lpm(){const d=await ap('/api/admin/payment-methods');if(!d)return
+const ms=d.methods||[];if(!ms.length){$('pmc').innerHTML='<div class="em">No payment methods</div>';return}
+$('pmc').innerHTML=ms.map(m=>`<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.04)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:600;font-size:14px">${es(m.name==='cbe'?'🏦 CBE Birr':'📱 Telebirr')}</div><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--h);cursor:pointer"><input type="checkbox" ${m.is_active?'checked':''} onchange="spm(${m.id},'is_active',this.checked)" style="accent-color:var(--a)"> Active</label></div><div style="margin-bottom:4px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Bank Name</div><input class="txt" id="pmbn${m.id}" value="${es(m.bank_name||'')}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'bank_name',this.value)"></div><div style="margin-bottom:4px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Account Holder</div><input class="txt" id="pman${m.id}" value="${es(m.account_name)}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'account_name',this.value)"></div><div><div style="font-size:11px;color:var(--h);margin-bottom:2px">Account Number</div><input class="txt" id="pmanum${m.id}" value="${es(m.account_number)}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'account_number',this.value)"></div></div>`).join('')+'<button class="btn bp" style="margin:0" onclick="spmSave()">💾 Save Payment Methods</button>'}
+let _pmDirty=[];function spm(id,field,val){_pmDirty=Object.values({...Object.fromEntries(_pmDirty.map(x=>[x.id,x])),[id]:{id,...Object.fromEntries(_pmDirty.filter(x=>x.id===id).flatMap(x=>Object.entries(x)).concat([[field,val]]))}});_pmDirty=_pmDirty.filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i);_pmDirty=_pmDirty.map(x=>({...x,[field]:val}))}
+async function spmSave(){if(!_pmDirty.length){tt('No changes','er');return}const d=await ap('/api/admin/payment-methods',{method:'POST',body:JSON.stringify({methods:_pmDirty})});if(d&&d.success){tt('✅ Saved','ok');_pmDirty=[];lpm()}else{tt('Save failed','er')}}
 
 async function bdb(){const d=await ap('/api/backup',{method:'POST'});if(d&&d.success){tt('✅ Backup done','ok');lse()}}
 function cr(){Telegram.WebApp.showConfirm('Revoke ALL trials?',async ok=>{if(!ok)return;const d=await ap('/api/admin/subscriptions/revoke-all',{method:'POST'});if(d&&d.success){tt('🔒 All revoked','ok');lse()}})}
@@ -805,6 +812,46 @@ async def api_system(request: Request):
         sec = time.monotonic()
         d, h, m = int(sec // 86400), int((sec % 86400) // 3600), int((sec % 3600) // 60)
         return {"bot_online": (time.monotonic() - bot_last_heartbeat) < HEARTBEAT_TIMEOUT, "uptime": f"{d}d {h}h {m}m", "businesses": bz, "users": us, "orders": od, "database": "PostgreSQL", "last_backup": "Use /backup in bot"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/payment-methods")
+async def api_get_payment_methods(request: Request):
+    await _require_admin(request)
+    try:
+        from db.database import async_session
+        from db.models import PaymentMethod
+        from sqlalchemy import select
+
+        async with async_session() as s:
+            rows = (await s.execute(select(PaymentMethod).order_by(PaymentMethod.id))).scalars().all()
+            return {"methods": [{"id": m.id, "name": m.name, "bank_name": m.bank_name or "", "account_name": m.account_name, "account_number": m.account_number, "is_active": m.is_active} for m in rows]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/payment-methods")
+async def api_update_payment_method(request: Request):
+    await _require_admin(request)
+    try:
+        body = await request.json()
+        from db.database import async_session
+        from db.models import PaymentMethod
+        from sqlalchemy import select
+
+        async with async_session() as s:
+            for item in body.get("methods", []):
+                mid = item.get("id")
+                if mid:
+                    m = await s.get(PaymentMethod, mid)
+                    if m:
+                        m.bank_name = item.get("bank_name", m.bank_name)
+                        m.account_name = item.get("account_name", m.account_name)
+                        m.account_number = item.get("account_number", m.account_number)
+                        m.is_active = item.get("is_active", m.is_active)
+            await s.commit()
+            return {"success": True}
     except Exception as e:
         return {"error": str(e)}
 

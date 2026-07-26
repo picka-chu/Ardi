@@ -16,12 +16,12 @@ from telegram.ext import (
 
 from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
-from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, _utcnow
+from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
 from bot.translations import _t, lang_kb
-from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, TRIAL_DAYS, CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
+from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, TRIAL_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -2973,6 +2973,26 @@ def _super_admin_kb():
 
 # ─── Subscription / Billing ──────────────────────────────────────────────
 
+
+async def _get_payment_methods() -> list:
+    """Fetch active payment methods from DB, fallback to env vars."""
+    try:
+        from db.database import async_session
+        from sqlalchemy import select
+        async with async_session() as s:
+            rows = (await s.execute(select(PaymentMethod).where(PaymentMethod.is_active == True).order_by(PaymentMethod.id))).scalars().all()
+            if rows:
+                return rows
+    except Exception:
+        pass
+    # Fallback to env vars
+    from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
+    return [
+        type("PM", (), {"name": "cbe", "bank_name": "CBE", "account_name": CBE_ACCOUNT_NAME, "account_number": str(CBE_ACCOUNT_NUMBER), "is_active": True})(),
+        type("PM", (), {"name": "telebirr", "bank_name": "Telebirr", "account_name": TELEBIRR_ACCOUNT_NAME, "account_number": str(TELEBIRR_ACCOUNT_NUMBER), "is_active": True})(),
+    ]
+
+
 SUBSCRIPTION_INFO = (
     "*Ardi AI — Subscription Plans*\n\n"
     f"• Monthly: *{SUBSCRIPTION_MONTHLY:,} ETB* ({TRIAL_DAYS}-day trial)\n"
@@ -3068,14 +3088,14 @@ async def subscription_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(
         f"✅ *{plan.capitalize()} plan selected!*\n\n"
         f"Amount: *{amount:,} ETB*\n\n"
-        "*Send payment to one of these accounts:*\n\n"
-        f"🏦 *CBE*\n"
-        f"Name: {CBE_ACCOUNT_NAME}\n"
-        f"Account: `{CBE_ACCOUNT_NUMBER}`\n\n"
-        f"📱 *Telebirr*\n"
-        f"Name: {TELEBIRR_ACCOUNT_NAME}\n"
-        f"Account: `{TELEBIRR_ACCOUNT_NUMBER}`\n\n"
-        "*After paying, send a screenshot of the receipt here.*\n"
+        "*Send payment to one of these accounts:*\n\n" +
+        "\n\n".join(
+            f"{'🏦' if m.name=='cbe' else '📱'} *{m.bank_name or m.name.title()}*\n"
+            f"Name: {m.account_name}\n"
+            f"Account: `{m.account_number}`"
+            for m in await _get_payment_methods()
+        ) +
+        "\n\n*After paying, send a screenshot of the receipt here.*\n"
         "I'll verify it automatically!",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
@@ -3212,8 +3232,9 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
     if is_subscription:
         plan = business.subscription_plan or "monthly"
         amount_needed = SUBSCRIPTION_MONTHLY if plan == "monthly" else SUBSCRIPTION_YEARLY
-        expected_accounts = [CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NUMBER]
-        expected_names = [CBE_ACCOUNT_NAME.lower(), TELEBIRR_ACCOUNT_NAME.lower()]
+        methods = await _get_payment_methods()
+        expected_accounts = [m.account_number for m in methods]
+        expected_names = [m.account_name.lower() for m in methods]
 
         amount_ok = _amount_sufficient(amount, amount_needed)
         account_ok = any(acc in receiver_account for acc in expected_accounts) or any(

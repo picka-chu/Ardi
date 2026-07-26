@@ -2,7 +2,7 @@ import logging
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text
+from sqlalchemy import text, select
 
 from config import DATABASE_URL
 
@@ -121,3 +121,16 @@ async def init_db():
                     logger.debug("Column already exists: %s", sql.split()[2])
                 else:
                     logger.warning("Migration warning: %s", e)
+
+    # Seed default payment methods if empty
+    from db.models import PaymentMethod
+    async with async_session() as seed_session:
+        existing = await seed_session.execute(select(PaymentMethod))
+        if not existing.scalar_one_or_none():
+            from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
+            seed_session.add_all([
+                PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME, account_number=str(CBE_ACCOUNT_NUMBER), is_active=True),
+                PaymentMethod(name="telebirr", bank_name="Telebirr", account_name=TELEBIRR_ACCOUNT_NAME, account_number=str(TELEBIRR_ACCOUNT_NUMBER), is_active=True),
+            ])
+            await seed_session.commit()
+            logger.info("Seeded default payment methods")
