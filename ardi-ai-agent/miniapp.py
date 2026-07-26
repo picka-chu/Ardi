@@ -42,8 +42,22 @@ async def _require_business(request: Request):
         init_data = request.query_params.get("tgWebAppData", "")
     user = _validate_init_data(init_data)
     if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if not user:
+        platform = request.headers.get("X-Telegram-Platform", "")
+        fallback_id = request.headers.get("X-Telegram-User-Id", "")
+        if platform in ("tdesktop", "web") and fallback_id:
+            try:
+                tid_int = int(fallback_id)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            from db.database import async_session
+            from db.models import Business
+            from sqlalchemy import select
+            async with async_session() as s:
+                result = await s.execute(select(Business).where(Business.telegram_chat_id == tid_int))
+                b = result.scalar_one_or_none()
+                if not b:
+                    raise HTTPException(status_code=403, detail="No business registered")
+                return {"business": b, "telegram_id": tid_int, "user": {"id": tid_int}}
         raise HTTPException(status_code=401, detail="Unauthorized")
     tid = user.get("id")
     if not tid:
@@ -345,10 +359,11 @@ input,textarea,select,button{font-family:inherit}
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-function gi(){try{var d=Telegram.WebApp.initData||Telegram.WebApp.initDataUnsafe?JSON.stringify(Telegram.WebApp.initDataUnsafe):'';return d||''}catch(e){return''}}
-function hd(){return{"Content-Type":"application/json","X-Telegram-Init-Data":gi()}}
-var _id=gi();if(!_id){var _db=document.createElement('div');_db.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#e74c3c;color:#fff;text-align:center;padding:10px;font-size:13px;font-family:sans-serif';try{var _k=Object.keys(Telegram.WebApp).join(',');var _iu=Telegram.WebApp.initDataUnsafe?JSON.stringify(Telegram.WebApp.initDataUnsafe).slice(0,200):'(null)';_db.textContent='TG EMPTY | keys='+_k+' | initDataUnsafe='+_iu+' | url='+window.location.href}catch(e){_db.textContent='TG.WebApp error: '+e.message};document.body.prepend(_db)}
 Telegram.WebApp.ready();Telegram.WebApp.expand();
+var _p=Telegram.WebApp.platform||'';
+var _initData=Telegram.WebApp.initData||'';
+var _user=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user||null;
+function hd(){var h={"Content-Type":"application/json","X-Telegram-Init-Data":_initData,"X-Telegram-Platform":_p};if(!_initData&&_user)h["X-Telegram-User-Id"]=_user.id;return h}
 function $(i){return document.getElementById(i)}
 function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');requestAnimationFrame(()=>{e.classList.add('s');clearTimeout(e._h);e._h=setTimeout(()=>e.classList.remove('s'),3000)})}
 function ld(o){$('ld').classList.toggle('a',o)}
