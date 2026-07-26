@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
@@ -7,14 +8,60 @@ from config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+class _SessionFactory:
+    """Creates one engine per event loop — safe for bot + uvicorn (different loops)."""
+    def __init__(self):
+        self._engines: dict[int, any] = {}
+        self._makers: dict[int, any] = {}
+
+    def __call__(self):
+        try:
+            loop_id = id(asyncio.get_running_loop())
+        except RuntimeError:
+            loop_id = 0
+        if loop_id not in self._engines:
+            self._engines[loop_id] = create_async_engine(
+                DATABASE_URL,
+                echo=False,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,
+            )
+            self._makers[loop_id] = async_sessionmaker(
+                self._engines[loop_id], class_=AsyncSession, expire_on_commit=False
+            )
+        return self._makers[loop_id]()
+
+    @property
+    def engine(self):
+        try:
+            loop_id = id(asyncio.get_running_loop())
+        except RuntimeError:
+            loop_id = 0
+        if loop_id not in self._engines:
+            self._engines[loop_id] = create_async_engine(
+                DATABASE_URL,
+                echo=False,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,
+            )
+            self._makers[loop_id] = async_sessionmaker(
+                self._engines[loop_id], class_=AsyncSession, expire_on_commit=False
+            )
+        return self._engines[loop_id]
+
+
+async_session = _SessionFactory()
+
+
+# Backward compat: `engine` resolves to the current loop's engine at access time
+class _EngineProxy:
+    def __getattr__(self, name):
+        return getattr(async_session.engine, name)
+
+engine = _EngineProxy()
 
 
 class Base(DeclarativeBase):
@@ -26,11 +73,11 @@ def _is_sqlite(url: str) -> bool:
 
 
 async def init_db():
+    engine = async_session.engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created/verified")
 
-    # Run raw migrations outside the create_all transaction
     async with engine.begin() as conn:
         migration_sql = [
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS ai_tone VARCHAR(50) DEFAULT 'friendly'",
@@ -62,7 +109,6 @@ async def init_db():
                 "ALTER TABLE order_items ALTER COLUMN unit_price TYPE NUMERIC(10,2)",
             ])
         if _is_sqlite(DATABASE_URL):
-            # SQLite doesn't support IF NOT EXISTS for columns
             migration_sql = [s.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN") for s in migration_sql]
 
         for sql in migration_sql:
