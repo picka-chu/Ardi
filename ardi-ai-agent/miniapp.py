@@ -255,59 +255,66 @@ BIZ_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>My Business - Ardi AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-:root{--b:var(--tg-theme-bg-color,#0c0c1a);--c:var(--tg-theme-secondary-bg-color,#16162a);--t:var(--tg-theme-text-color,#eee);--h:var(--tg-theme-hint-color,#6e6e82);--a:var(--tg-theme-button-color,#6c5ce7);--at:var(--tg-theme-button-text-color,#fff);--r:14px;--br:linear-gradient(135deg,var(--a),#a29bfe)}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:var(--b);color:var(--t);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;padding-bottom:80px}
-input,textarea,select,button{font-family:inherit}
-.pg{display:none;padding:16px;max-width:480px;margin:0 auto}.pg.a{display:block}
-.hd{display:flex;align-items:center;justify-content:space-between;padding:12px 4px 16px}
-.hl{display:flex;align-items:center;gap:12px}
-.lo{width:40px;height:40px;background:var(--br);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 4px 16px rgba(108,92,231,.3)}
-.ht h1{font-size:18px;font-weight:700;line-height:1.2}.ht p{font-size:12px;color:var(--h);font-weight:500}
-.nv{position:fixed;bottom:0;left:0;right:0;background:var(--c);border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-around;padding:8px 0;padding-bottom:calc(8px + env(safe-area-inset-bottom));z-index:100;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.nb{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--h);font-family:inherit;font-size:10px;font-weight:500;cursor:pointer;padding:4px 12px;border-radius:8px;transition:.2s;-webkit-tap-highlight-color:transparent}
-.nb .ni{font-size:20px;line-height:1}.nb.a{color:var(--a)}.nb:active{transform:scale(.92)}
-.cd{background:var(--c);border-radius:var(--r);padding:16px;margin-bottom:12px;border:1px solid rgba(255,255,255,.04)}
-.sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-.sc{background:var(--c);border-radius:var(--r);padding:14px;border:1px solid rgba(255,255,255,.04)}
-.sc .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:8px}
-.sc .ic.pu{background:rgba(108,92,231,.15)}.sc .ic.gr{background:rgba(46,213,115,.15)}.sc .ic.or{background:rgba(255,165,2,.15)}.sc .ic.bl{background:rgba(54,164,255,.15)}.sc .ic.re{background:rgba(255,71,87,.15)}
-.sl{font-size:11px;color:var(--h);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
-.sv{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2}
-.sv.sk{width:50px;height:28px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:4px}
-@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.sh{font-size:13px;font-weight:600;color:var(--h);margin-bottom:10px;padding:0 4px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.4px}
-.li{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:.2s;-webkit-tap-highlight-color:transparent}
-.li:last-child{border-bottom:none}.li:active{opacity:.6}
-.la{width:36px;height:36px;border-radius:10px;background:rgba(108,92,231,.12);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--a);flex-shrink:0}
-.lb{flex:1;min-width:0}.lt{font-size:14px;font-weight:600}.ls{font-size:12px;color:var(--h);margin-top:1px}
-.lr{text-align:right;flex-shrink:0}
-.st{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
-.sa{background:rgba(46,213,115,.12);color:#2ed573}.stb{background:rgba(255,165,2,.12);color:#ffa502}.se{background:rgba(255,71,87,.12);color:#ff4757}.sp{background:rgba(108,92,231,.12);color:var(--a)}.skk{background:rgba(46,213,115,.12);color:#2ed573}.sx{background:rgba(255,71,87,.12);color:#ff4757}.sy{background:rgba(255,165,2,.12);color:#ffa502}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:12px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:.2s;-webkit-tap-highlight-color:transparent;margin-bottom:8px}
-.btn:active{transform:scale(.97)}.bp{background:var(--a);color:var(--at)}.bs{background:rgba(255,255,255,.06);color:var(--t);border:1px solid rgba(255,255,255,.08)}.br{background:rgba(255,71,87,.12);color:#ff4757}.bg{background:rgba(46,213,115,.12);color:#2ed573}
-.sr{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-family:inherit;font-size:14px;outline:none;margin-bottom:12px;transition:.2s}
-.sr:focus{border-color:var(--a);background:rgba(108,92,231,.06)}
-.ts{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--c);color:var(--t);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 8px 40px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);z-index:1000;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .25s;opacity:0;max-width:calc(100vw - 48px);text-align:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);pointer-events:none}
-.ts.s{transform:translateX(-50%) translateY(0);opacity:1}.ts.er{border-color:rgba(255,71,87,.3)}.ts.ok{border-color:rgba(46,213,115,.3)}
-.ld{position:fixed;top:0;left:0;width:100%;height:3px;z-index:999;display:none;background:rgba(255,255,255,.04)}
-.ld.a{display:block}.ld::after{content:'';position:absolute;top:0;left:0;height:100%;width:40%;background:var(--br);animation:ld 1s ease-in-out infinite;border-radius:2px}
-@keyframes ld{0%{left:-40%}100%{left:100%}}
-.dl{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}.dl .rw{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}.dl .rw:last-child{border-bottom:none}
-.dl .lb{font-size:13px;color:var(--h)}.dl .vl{font-size:13px;font-weight:600;text-align:right}
-.em{padding:40px 20px;text-align:center;color:var(--h);font-size:14px}
-.mod{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
-.mod.a{display:flex}.mw{background:var(--c);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));max-height:85vh;overflow-y:auto;animation:ms .3s cubic-bezier(.34,1.56,.64,1)}
-@keyframes ms{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.mh{font-size:18px;font-weight:700;margin-bottom:16px}
-.tg{display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,.04);border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.tk{width:44px;height:24px;border-radius:12px;background:rgba(255,255,255,.12);position:relative;transition:.3s;flex-shrink:0}.tk.on{background:var(--a)}.tk::after{content:'';width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:.3s}.tk.on::after{left:22px}
-.sel{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-size:14px;outline:none;appearance:none;-webkit-appearance:none;cursor:pointer}
-.txt{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-size:14px;outline:none;transition:.2s;resize:none}
-.txt:focus{border-color:var(--a)}.txt::placeholder{color:var(--h)}
-.gr{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-</style>
+    <style>
+    :root{--b:var(--tg-theme-bg-color,#0c0c1a);--c:var(--tg-theme-secondary-bg-color,#16162a);--t:var(--tg-theme-text-color,#eee);--h:var(--tg-theme-hint-color,#6e6e82);--a:var(--tg-theme-button-color,#6c5ce7);--at:var(--tg-theme-button-text-color,#fff);--r:14px;--br:linear-gradient(135deg,var(--a),#a29bfe)}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:var(--b);color:var(--t);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;padding-bottom:80px}
+    input,textarea,select,button{font-family:inherit}
+    .pg{display:none;padding:16px;max-width:480px;margin:0 auto}.pg.a{display:block}
+    .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 4px 16px}
+    .hl{display:flex;align-items:center;gap:12px}
+    .lo{width:40px;height:40px;background:var(--br);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 4px 16px rgba(108,92,231,.3)}
+    .ht h1{font-size:18px;font-weight:700;line-height:1.2}.ht p{font-size:12px;color:var(--h);font-weight:500}
+    .nv{position:fixed;bottom:0;left:0;right:0;background:var(--c);border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-around;padding:8px 0;padding-bottom:calc(8px + env(safe-area-inset-bottom));z-index:100;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+    .nb{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--h);font-family:inherit;font-size:10px;font-weight:500;cursor:pointer;padding:4px 12px;border-radius:8px;transition:.2s;-webkit-tap-highlight-color:transparent}
+    .nb .ni{font-size:20px;line-height:1}.nb.a{color:var(--a)}.nb:active{transform:scale(.92)}
+    .cd{background:var(--c);border-radius:var(--r);padding:16px;margin-bottom:12px;border:1px solid rgba(255,255,255,.04)}
+    .sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+    .sc{background:var(--c);border-radius:var(--r);padding:14px;border:1px solid rgba(255,255,255,.04)}
+    .sc .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:8px}
+    .sc .ic.pu{background:rgba(108,92,231,.15)}.sc .ic.gr{background:rgba(46,213,115,.15)}.sc .ic.or{background:rgba(255,165,2,.15)}.sc .ic.bl{background:rgba(54,164,255,.15)}
+    .sl{font-size:11px;color:var(--h);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+    .sv{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2}
+    .sv.sk{width:50px;height:28px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:4px}
+    @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .sh{font-size:13px;font-weight:600;color:var(--h);margin-bottom:10px;padding:0 4px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.4px}
+    .li{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:.2s;-webkit-tap-highlight-color:transparent}
+    .li:last-child{border-bottom:none}.li:active{opacity:.6}
+    .la{width:36px;height:36px;border-radius:10px;background:rgba(108,92,231,.12);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--a);flex-shrink:0}
+    .lb{flex:1;min-width:0}.lt{font-size:14px;font-weight:600}.ls{font-size:12px;color:var(--h);margin-top:1px}
+    .lr{text-align:right;flex-shrink:0}
+    .st{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+    .sa{background:rgba(46,213,115,.12);color:#2ed573}.stb{background:rgba(255,165,2,.12);color:#ffa502}.se{background:rgba(255,71,87,.12);color:#ff4757}.sp{background:rgba(108,92,231,.12);color:var(--a)}.skk{background:rgba(46,213,115,.12);color:#2ed573}.sx{background:rgba(255,71,87,.12);color:#ff4757}
+    .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:12px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:.2s;-webkit-tap-highlight-color:transparent;margin-bottom:8px}
+    .btn:active{transform:scale(.97)}.bp{background:var(--a);color:var(--at)}.bs{background:rgba(255,255,255,.06);color:var(--t);border:1px solid rgba(255,255,255,.08)}.br{background:rgba(255,71,87,.12);color:#ff4757}.bg{background:rgba(46,213,115,.12);color:#2ed573}
+    .sr{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-family:inherit;font-size:14px;outline:none;margin-bottom:12px;transition:.2s}
+    .sr:focus{border-color:var(--a);background:rgba(108,92,231,.06)}
+    .ts{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--c);color:var(--t);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 8px 40px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);z-index:1000;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .25s;opacity:0;max-width:calc(100vw - 48px);text-align:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);pointer-events:none}
+    .ts.s{transform:translateX(-50%) translateY(0);opacity:1}.ts.er{border-color:rgba(255,71,87,.3)}.ts.ok{border-color:rgba(46,213,115,.3)}
+    .ld{position:fixed;top:0;left:0;width:100%;height:3px;z-index:999;display:none;background:rgba(255,255,255,.04)}
+    .ld.a{display:block}.ld::after{content:'';position:absolute;top:0;left:0;height:100%;width:40%;background:var(--br);animation:ld 1s ease-in-out infinite;border-radius:2px}
+    @keyframes ld{0%{left:-40%}100%{left:100%}}
+    .dl{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}.dl .rw{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}.dl .rw:last-child{border-bottom:none}
+    .dl .lb{font-size:13px;color:var(--h)}.dl .vl{font-size:13px;font-weight:600;text-align:right}
+    .em{padding:40px 20px;text-align:center;color:var(--h);font-size:14px}
+    .mod{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+    .mod.a{display:flex}.mw{background:var(--c);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));max-height:85vh;overflow-y:auto;animation:ms .3s cubic-bezier(.34,1.56,.64,1)}
+    @keyframes ms{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    .mh{font-size:18px;font-weight:700;margin-bottom:16px}
+    .tg{display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,.04);border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .tk{width:44px;height:24px;border-radius:12px;background:rgba(255,255,255,.12);position:relative;transition:.3s;flex-shrink:0}.tk.on{background:var(--a)}.tk::after{content:'';width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:.3s}.tk.on::after{left:22px}
+    .sel{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-size:14px;outline:none;appearance:none;-webkit-appearance:none;cursor:pointer}
+    .txt{width:100%;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--t);font-size:14px;outline:none;transition:.2s;resize:none}
+    .txt:focus{border-color:var(--a)}.txt::placeholder{color:var(--h)}
+    .gr{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+    /* Product grid */
+    .pgc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    .pc{background:var(--c);border-radius:var(--r);border:1px solid rgba(255,255,255,.04);overflow:hidden;transition:.2s}.pc:active{transform:scale(.97)}
+    .pc img{width:100%;height:140px;object-fit:cover;display:block;background:rgba(255,255,255,.04)}
+    .pc .pi{width:100%;height:140px;background:linear-gradient(135deg,rgba(108,92,231,.2),rgba(162,155,254,.1));display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--h)}
+    .pc .pb{padding:10px 12px 12px}.pc .pn{font-size:14px;font-weight:600;line-height:1.3;margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .pc .pp{font-size:13px;color:var(--h);font-weight:500;margin-bottom:8px}.pc .pa{display:flex;align-items:center;justify-content:space-between}.pc .ac{display:flex;gap:6px}.pc .ac button{background:none;border:none;color:var(--h);font-size:16px;cursor:pointer;padding:4px;border-radius:8px;transition:.2s;line-height:1}.pc .ac button:hover{background:rgba(255,255,255,.06)}.pc .ac .del{color:#ff4757}
+  </style>
 </head>
 <body>
 <div class="ld" id="ld"></div>
@@ -404,19 +411,24 @@ async function ldd(){
 // ─── PRODUCTS ──────────────────────────────────────────────
 let allP=[];async function lp(){const d=await ap('/api/business/products');if(!d)return;allP=d.products||[];$('pc').textContent=allP.length;fp()}
 function fp(){const q=$('ps').value.toLowerCase();const items=q?allP.filter(p=>(p.name||'').toLowerCase().includes(q)):allP;if(!items.length){$('pl').innerHTML='<div class="em">No products</div>';return}
-$('pl').innerHTML=items.map(p=>`<div class="cd" style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">${es(p.name)}</div><div style="font-size:13px;color:var(--h)">ETB ${(+p.price).toLocaleString()}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="st ${p.available?'sa':'sx'}" style="cursor:pointer" onclick="tgl(${p.id})">${p.available?'In Stock':'Out'}</span><span style="font-size:18px;color:var(--h);cursor:pointer;padding:4px" onclick="ep(${p.id})">✏️</span><span style="font-size:18px;color:#ff4757;cursor:pointer;padding:4px" onclick="dp(${p.id})">🗑️</span></div></div></div>`).join('')}
+$('pl').innerHTML='<div class="pgc">'+items.map(p=>{const img=p.photo_url?`<img src="${es(p.photo_url)}" alt="${es(p.name)}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=pi>📦</div>'">`:'<div class="pi">📦</div>';const phBtn=p.photo_url?'':`<button onclick="event.stopPropagation();upp(${p.id})">📷</button>`;return `<div class="pc">${img}<div class="pb"><div class="pn">${es(p.name)}</div><div class="pp">ETB ${(+p.price).toLocaleString()}</div><div class="pa"><span class="st ${p.available?'sa':'sx'}" style="cursor:pointer" onclick="event.stopPropagation();tgl(${p.id})">${p.available?'In Stock':'Out'}</span><div class="ac">${phBtn}<button onclick="event.stopPropagation();ep(${p.id})">✏️</button><button class="del" onclick="event.stopPropagation();dp(${p.id})">🗑️</button></div></div></div></div>`}).join('')+'</div>'}
+
+// Upload photo for existing product
+async function upp(i){const p=allP.find(x=>x.id===i);if(!p)return;const inp=document.createElement('input');inp.type='file';inp.accept='image/jpeg,image/png,image/webp';inp.onchange=async function(){const f=this.files[0];if(!f)return;const b=await new Promise(r=>{const fr=new FileReader;fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(f)});ld(true);const d=await ap('/api/business/products/'+i,{method:'PATCH',body:JSON.stringify({photo_data:b})});if(d&&d.success){tt('📷 Photo added','ok');lp()}else{tt('Upload failed','er');ld(false)}};inp.click()}
 
 async function tgl(i){const d=await ap('/api/business/products/'+i+'/toggle',{method:'POST'});if(d&&d.success){tt('✅ Updated','ok');lp()}}
 async function dp(i){Telegram.WebApp.showConfirm('Delete this product?',async ok=>{if(!ok)return;const d=await ap('/api/business/products/'+i,{method:'DELETE'});if(d&&d.success){tt('🗑️ Deleted','ok');lp()}})}
 async function ep(i){const p=allP.find(x=>x.id===i);if(!p)return;const n=prompt('Product name:',p.name);if(!n||!n.trim())return;const r=prompt('Price (ETB):',p.price);if(!r||!r.trim())return;const d=await ap('/api/business/products/'+i,{method:'PATCH',body:JSON.stringify({name:n.trim(),price:parseFloat(r.replace(/[^0-9.]/g,''))})});if(d&&d.success){tt('✅ Updated','ok');lp()}}
 
 // Add product modal
-const am=document.createElement('div');am.className='mod';am.id='am';am.innerHTML=`<div class="mw"><div class="mh">+ Add Product</div><input class="txt" id="apn" placeholder="Product name" style="margin-bottom:8px"><input class="txt" id="app" placeholder="Price in ETB" style="margin-bottom:16px" type="number"><div style="display:flex;gap:8px"><button class="btn bs" style="flex:1;margin:0" onclick="cam()">Cancel</button><button class="btn bp" style="flex:1;margin:0" onclick="sap()">Save</button></div></div>`
+const am=document.createElement('div');am.className='mod';am.id='am';am.innerHTML=`<div class="mw"><div class="mh">+ Add Product</div><input class="txt" id="apn" placeholder="Product name" style="margin-bottom:8px"><input class="txt" id="app" placeholder="Price in ETB" style="margin-bottom:8px" type="number"><div style="margin-bottom:16px"><label style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.04);cursor:pointer;font-size:13px;color:var(--h)"><span style="font-size:18px">📷</span> Add Photo <span style="font-size:11px;color:var(--h);font-weight:400">(optional)</span><input type="file" id="apph" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="pph(this)"></label><span id="apfn" style="font-size:11px;color:var(--h);margin-left:36px;display:none"></span></div><div style="display:flex;gap:8px"><button class="btn bs" style="flex:1;margin:0" onclick="cam()">Cancel</button><button class="btn bp" style="flex:1;margin:0" onclick="sap()">Save</button></div></div>`
 document.body.appendChild(am);
-function apm(){am.classList.add('a');$('apn').value='';$('app').value='';setTimeout(()=>$('apn').focus(),300)}
+let _aph=null;function pph(i){const f=i.files[0];if(!f){_aph=null;$('apfn').style.display='none';return}_aph=f;$('apfn').textContent='📷 '+f.name;$('apfn').style.display='block'}
+function apm(){am.classList.add('a');$('apn').value='';$('app').value='';_aph=null;$('apfn').style.display='none';setTimeout(()=>$('apn').focus(),300)}
 function cam(){am.classList.remove('a')}
 async function sap(){const n=$('apn').value.trim();const p=parseFloat($('app').value);if(!n||!p||p<=0){tt('Enter name & valid price','er');return}
-const d=await ap('/api/business/products',{method:'POST',body:JSON.stringify({name:n,price:p})});if(d&&d.success){tt('✅ Added','ok');cam();lp()}}
+let photoData=null;if(_aph){const b=await new Promise(r=>{const f=new FileReader;f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(_aph)});photoData=b}
+const d=await ap('/api/business/products',{method:'POST',body:JSON.stringify({name:n,price:p,photo_data:photoData})});if(d&&d.success){tt('✅ Added','ok');cam();lp()}}
 
 // ─── ORDERS ────────────────────────────────────────────────
 async function blo(){const f=$('of').value;const d=await ap('/api/business/orders?filter='+f);if(!d)return
@@ -845,11 +857,24 @@ async def biz_add_product(request: Request):
         body = await request.json()
         from db.database import async_session
         from db.models import Product
+        from storage import upload_product_photo
 
         async with async_session() as s:
             p = Product(business_id=b.id, name=body["name"], price=body.get("price", 0))
             s.add(p)
             await s.commit()
+            # Upload photo if provided (after commit so product has an id)
+            photo_data = body.get("photo_data")
+            if photo_data:
+                import base64
+                try:
+                    photo_bytes = base64.b64decode(photo_data)
+                    url = await upload_product_photo(photo_bytes, b.id, body["name"])
+                    if url:
+                        p.photo_url = url
+                        await s.commit()
+                except Exception:
+                    pass
             return {"success": True, "id": p.id}
     except Exception as e:
         return {"error": str(e)}
@@ -901,6 +926,7 @@ async def biz_update_product(request: Request, prod_id: int):
         body = await request.json()
         from db.database import async_session
         from db.models import Product
+        from storage import upload_product_photo
 
         async with async_session() as s:
             p = await s.get(Product, prod_id)
@@ -910,6 +936,16 @@ async def biz_update_product(request: Request, prod_id: int):
                 p.name = body["name"]
             if "price" in body:
                 p.price = float(body["price"])
+            photo_data = body.get("photo_data")
+            if photo_data:
+                import base64
+                try:
+                    photo_bytes = base64.b64decode(photo_data)
+                    url = await upload_product_photo(photo_bytes, b.id, p.name)
+                    if url:
+                        p.photo_url = url
+                except Exception:
+                    pass
             await s.commit()
             return {"success": True}
     except Exception as e:
