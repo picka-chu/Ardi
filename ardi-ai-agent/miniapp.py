@@ -1,5 +1,5 @@
 """Mini app web server for Ardi AI."""
-import os, time, hmac, hashlib, json
+import os, time, hmac, hashlib, json, secrets
 from urllib.parse import unquote_plus
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -9,6 +9,26 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 bot_last_heartbeat: float = time.monotonic()
 HEARTBEAT_TIMEOUT = 120
+
+# Short-lived dashboard tokens: {token: {"telegram_id": int, "expires": float}}
+_dash_tokens: dict = {}
+DASH_TOKEN_TTL = 3600  # 1 hour
+
+
+def generate_dash_token(telegram_id: int) -> str:
+    token = secrets.token_hex(20)
+    _dash_tokens[token] = {"telegram_id": telegram_id, "expires": time.monotonic() + DASH_TOKEN_TTL}
+    return token
+
+
+def validate_dash_token(token: str) -> int | None:
+    entry = _dash_tokens.get(token)
+    if not entry:
+        return None
+    if time.monotonic() > entry["expires"]:
+        _dash_tokens.pop(token, None)
+        return None
+    return entry["telegram_id"]
 
 
 async def _require_admin(request: Request):
@@ -37,40 +57,37 @@ def _validate_init_data(init_data: str) -> dict | None:
 
 
 async def _require_business(request: Request):
+    # 1) Try HMAC-validated initData (mobile)
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:
         init_data = request.query_params.get("tgWebAppData", "")
     user = _validate_init_data(init_data)
-    if not user:
-        platform = request.headers.get("X-Telegram-Platform", "")
-        fallback_id = request.headers.get("X-Telegram-User-Id", "")
-        if platform in ("tdesktop", "web") and fallback_id:
-            try:
-                tid_int = int(fallback_id)
-            except (ValueError, TypeError):
-                raise HTTPException(status_code=401, detail="Unauthorized")
+    if user:
+        tid = user.get("id")
+        if tid:
             from db.database import async_session
             from db.models import Business
             from sqlalchemy import select
             async with async_session() as s:
-                result = await s.execute(select(Business).where(Business.telegram_chat_id == tid_int))
+                result = await s.execute(select(Business).where(Business.telegram_chat_id == tid))
                 b = result.scalar_one_or_none()
-                if not b:
-                    raise HTTPException(status_code=403, detail="No business registered")
-                return {"business": b, "telegram_id": tid_int, "user": {"id": tid_int}}
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    tid = user.get("id")
-    if not tid:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    from db.database import async_session
-    from db.models import Business
-    from sqlalchemy import select
-    async with async_session() as s:
-        result = await s.execute(select(Business).where(Business.telegram_chat_id == tid))
-        b = result.scalar_one_or_none()
-        if not b:
-            raise HTTPException(status_code=403, detail="No business registered")
-        return {"business": b, "telegram_id": tid, "user": user}
+                if b:
+                    return {"business": b, "telegram_id": tid, "user": user}
+
+    # 2) Try dashboard token (Desktop fallback — initData is buggy on tdesktop)
+    token = request.headers.get("X-Dashboard-Token", "") or request.query_params.get("token", "")
+    if token:
+        tid = validate_dash_token(token)
+        if tid:
+            from db.database import async_session
+            from db.models import Business
+            from sqlalchemy import select
+            async with async_session() as s:
+                result = await s.execute(select(Business).where(Business.telegram_chat_id == tid))
+                b = result.scalar_one_or_none()
+                if b:
+                    return {"business": b, "telegram_id": tid, "user": {"id": tid}}
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])
@@ -363,7 +380,8 @@ Telegram.WebApp.ready();Telegram.WebApp.expand();
 var _p=Telegram.WebApp.platform||'';
 var _initData=Telegram.WebApp.initData||'';
 var _user=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user||null;
-function hd(){var h={"Content-Type":"application/json","X-Telegram-Init-Data":_initData,"X-Telegram-Platform":_p};if(!_initData&&_user)h["X-Telegram-User-Id"]=_user.id;return h}
+var _token=(new URLSearchParams(window.location.search)).get('token')||'';
+function hd(){var h={"Content-Type":"application/json","X-Telegram-Init-Data":_initData,"X-Telegram-Platform":_p};if(!_initData&&_user)h["X-Telegram-User-Id"]=_user.id;if(_token)h["X-Dashboard-Token"]=_token;return h}
 function $(i){return document.getElementById(i)}
 function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');requestAnimationFrame(()=>{e.classList.add('s');clearTimeout(e._h);e._h=setTimeout(()=>e.classList.remove('s'),3000)})}
 function ld(o){$('ld').classList.toggle('a',o)}

@@ -8,7 +8,7 @@ import logging
 import os
 from collections import defaultdict
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ConversationHandler,
     ContextTypes,
@@ -2252,6 +2252,7 @@ MENU_BUTTONS = [
     ["🤖 AI Settings", "📋 Orders"],
     ["🔗 Share Link", "⏰ Hours"],
     ["📢 Channel", "📋 Order Settings"],
+    ["🌐 Open Dashboard"],
 ]
 
 GUEST_BUTTONS = [
@@ -2268,6 +2269,7 @@ BUTTON_ACTIONS = {
     "⏰ Hours": "hours",
     "📢 Channel": "connectchannel",
     "📋 Order Settings": "order_settings",
+    "🌐 Open Dashboard": "open_dashboard",
     "🚀 Register My Business": "register",
     "🔍 Browse Businesses": "browse_businesses",
     "🔙 Main Menu": "main_menu",
@@ -2531,14 +2533,34 @@ async def _intent_show_help(update, context, business, products, params):
 
 
 def business_kb():
-    btns = [row[:] for row in MENU_BUTTONS]
+    return ReplyKeyboardMarkup(MENU_BUTTONS, resize_keyboard=True)
+
+
+async def cmd_open_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from config import MINI_APP_URL
-    if MINI_APP_URL:
-        url = MINI_APP_URL
-        if url.startswith("http://"):
-            url = "https://" + url[7:]
-        btns.append([KeyboardButton("🌐 Open Dashboard", web_app={"url": f"{url}/business"})])
-    return ReplyKeyboardMarkup(btns, resize_keyboard=True)
+    if not MINI_APP_URL:
+        await update.message.reply_text("Dashboard URL not configured.")
+        return
+    chat_id = update.effective_chat.id
+    async with async_session() as session:
+        business = await get_business(session, chat_id)
+        if not business:
+            await update.message.reply_text("Please register your business first.")
+            return
+    from miniapp import generate_dash_token
+    token = generate_dash_token(chat_id)
+    url = MINI_APP_URL
+    if url.startswith("http://"):
+        url = "https://" + url[7:]
+    dashboard_url = f"{url}/business?token={token}"
+    keyboard = [[InlineKeyboardButton("🚀 Open Dashboard", web_app={"url": dashboard_url})]]
+    await update.message.reply_text(
+        "Tap the button below to open your business dashboard:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+BUTTON_DISPATCH["open_dashboard"] = cmd_open_dashboard
 
 
 def guest_kb():
