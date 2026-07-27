@@ -2677,13 +2677,20 @@ async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if business:
         sub = _get_subscription_status(business)
         if not sub["active"]:
+            from config import MINI_APP_URL
+            kb = None
+            if MINI_APP_URL:
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💳 Subscribe Now", web_app={"url": MINI_APP_URL + "/business"})],
+                ])
             await update.message.reply_text(
                 f"⚠️ *Subscription Expired*\n\n"
                 f"Your {sub['label']}. AI features are locked.\n\n"
                 f"• Monthly: {SUBSCRIPTION_MONTHLY:,} ETB\n"
                 f"• Yearly: {SUBSCRIPTION_YEARLY:,} ETB (2 months free)\n\n"
-                "Use /plans to subscribe and reactivate.",
+                "Subscribe below to reactivate.",
                 parse_mode="Markdown",
+                reply_markup=kb,
             )
             return
 

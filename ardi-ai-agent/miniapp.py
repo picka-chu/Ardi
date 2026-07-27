@@ -321,6 +321,12 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .pc .pi{width:100%;height:140px;background:linear-gradient(135deg,rgba(108,92,231,.2),rgba(162,155,254,.1));display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--h)}
     .pc .pb{padding:10px 12px 12px}.pc .pn{font-size:14px;font-weight:600;line-height:1.3;margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .pc .pp{font-size:13px;color:var(--h);font-weight:500;margin-bottom:8px}.pc .pa{display:flex;align-items:center;justify-content:space-between}.pc .ac{display:flex;gap:6px}.pc .ac button{background:none;border:none;color:var(--h);font-size:16px;cursor:pointer;padding:4px;border-radius:8px;transition:.2s;line-height:1}.pc .ac button:hover{background:rgba(255,255,255,.06)}.pc .ac .del{color:#ff4757}
+    /* Plan cards */
+    .plc{cursor:pointer;transition:.2s;position:relative}.plc:active{transform:scale(.97)}.plc .pb{background:var(--c);border-radius:var(--r);padding:16px;border:2px solid rgba(255,255,255,.04);text-align:center}.plc.s .pb{border-color:var(--a);background:rgba(108,92,231,.06)}.plc .pe{font-size:28px;margin-bottom:4px}.plc .pn{font-size:15px;font-weight:700}.plc .pp{font-size:24px;font-weight:800;margin:8px 0 2px;letter-spacing:-.5px}.plc .pp small{font-size:13px;font-weight:500;color:var(--h)}.plc .pd{font-size:12px;color:var(--h);line-height:1.4}.plc .pbadge{position:absolute;top:-8px;right:8px;background:var(--a);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px}
+    /* Subscription status banner */
+    .ssb{text-align:center;padding:24px 16px;border-radius:var(--r);margin-bottom:16px}.ssb.sa{background:rgba(46,213,115,.1);border:1px solid rgba(46,213,115,.15)}.ssb.stb{background:rgba(255,165,2,.1);border:1px solid rgba(255,165,2,.15)}.ssb.sx{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.15)}.ssb .si{font-size:36px;margin-bottom:6px}.ssb .stl{font-size:17px;font-weight:700}.ssb .std{font-size:13px;color:var(--h);margin-top:4px}
+    /* Upload zone */
+    .uz{display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px;border:2px dashed rgba(255,255,255,.08);border-radius:12px;cursor:pointer;transition:.2s;text-align:center}.uz:hover{border-color:var(--a)}.uz .ui{font-size:36px}.uz .ut{font-size:14px;color:var(--h)}.uz .us{font-size:11px;color:var(--h);margin-top:-4px}
   </style>
 </head>
 <body>
@@ -330,6 +336,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
   <button class="nb a" data-pg="dash"><span class="ni">📊</span>Dashboard</button>
   <button class="nb" data-pg="prod"><span class="ni">📦</span>Products</button>
   <button class="nb" data-pg="ord"><span class="ni">🛒</span>Orders</button>
+  <button class="nb" data-pg="sub"><span class="ni">💳</span>Plan</button>
   <button class="nb" data-pg="set"><span class="ni">⚙️</span>Settings</button>
 </nav>
 
@@ -386,6 +393,27 @@ BIZ_HTML = r"""<!DOCTYPE html>
   <div class="cd" id="subInfo"></div>
 </div>
 
+<div class="pg" id="pg-sub">
+  <div class="hd"><div class="ht"><h1>💳 Subscription</h1></div></div>
+  <div id="subStat"></div>
+  <div id="subBody"></div>
+  <div id="subPayArea" style="display:none">
+    <div class="sh">Send Payment To</div>
+    <div class="cd" id="subPayAccs"></div>
+    <div class="sh">Upload Receipt</div>
+    <div class="cd">
+      <div class="uz" id="subUz" onclick="document.getElementById('subRec').click()">
+        <div class="ui">📄</div>
+        <div class="ut">Tap to upload payment screenshot</div>
+        <div class="us">PNG, JPG or WEBP</div>
+      </div>
+      <input type="file" id="subRec" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="subFile(this)">
+      <div id="subRecName" style="font-size:12px;color:var(--h);text-align:center;margin-top:6px;display:none"></div>
+      <button class="btn bp" style="margin-top:12px" id="subSubmitBtn" onclick="subSubmit()" disabled>📩 Submit Payment Proof</button>
+    </div>
+  </div>
+</div>
+
 <div class="pg" id="pg-ordd"><button class="bk" onclick="sp('ord')">← Orders</button><div id="odc"></div></div>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -401,7 +429,7 @@ function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');r
 function ld(o){$('ld').classList.toggle('a',o)}
 function es(t){const d=document.createElement('div');d.appendChild(document.createTextNode(t));return d.innerHTML}
 document.querySelectorAll('.nb').forEach(b=>{b.onclick=()=>sp(b.dataset.pg)});
-function sp(p){document.querySelectorAll('.pg').forEach(x=>x.classList.remove('a'));const e=$('pg-'+p);if(e)e.classList.add('a');document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('a',b.dataset.pg===p));if(p==='dash')ldd();else if(p==='prod')lp();else if(p==='ord')blo();else if(p==='set')lset()}
+function sp(p){document.querySelectorAll('.pg').forEach(x=>x.classList.remove('a'));const e=$('pg-'+p);if(e)e.classList.add('a');document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('a',b.dataset.pg===p));if(p==='dash')ldd();else if(p==='prod')lp();else if(p==='ord')blo();else if(p==='sub')lsub();else if(p==='set')lset()}
 async function ap(p,o){ld(true);try{const r=await fetch(p,{headers:hd(),...o});if(r.status===401||r.status===403){tt('Session expired. Reopen from bot.','er');return null}if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}catch(e){tt('Error: '+e.message,'er');return null}finally{ld(false)}}
 
 // ─── DASHBOARD ─────────────────────────────────────────────
@@ -470,6 +498,33 @@ async function sbh(){const s=$('bhS').value.trim(),e=$('bhE').value.trim();if(!s
 const d=await ap('/api/business/settings',{method:'PATCH',body:JSON.stringify({business_hours_enabled:true,business_hours_start:s,business_hours_end:e})});if(d&&d.success)tt('✅ Hours saved','ok')}
 async function som(){const d=await ap('/api/business/settings',{method:'PATCH',body:JSON.stringify({ai_offline_message:$('offMsg').value})});if(d&&d.success)tt('✅ Saved','ok')}
 async function spi(){const d=await ap('/api/business/settings',{method:'PATCH',body:JSON.stringify({order_bank_name:$('bn').value,order_bank_account:$('ba').value,order_account_holder:$('bah').value})});if(d&&d.success)tt('✅ Payment info saved','ok')}
+
+// ─── SUBSCRIPTION ────────────────────────────────────────────
+let _subData=null,_subFile=null;
+async function lsub(){const d=await ap('/api/business/subscription');if(!d)return;_subData=d
+const st=d.status||'trial',plan=d.plan,isActive=d.active,days=d.days_left||0,label=statusLabel(st,days)
+$('subStat').innerHTML=`<div class="ssb ${st==='active'?'sa':st==='trial'?'stb':'sx'}"><div class="si">${st==='active'?'✅':st==='trial'?'⏳':'🔒'}</div><div class="stl">${label}</div><div class="std">${isActive?'All features active':st==='awaiting_payment'?'Plan selected — send payment to activate':st==='expired'||st==='suspended'?'Subscribe to continue using Ardi AI':''}</div></div>`
+// Plan cards (only show if not active or awaiting_payment)
+if(st==='active'||st==='awaiting_payment'){$('subBody').innerHTML=st==='active'?`<div class="cd" style="text-align:center;padding:20px"><div style="font-size:40px;margin-bottom:8px">🎉</div><div style="font-size:16px;font-weight:700">${plan==='yearly'?'Yearly':'Monthly'} Plan Active</div><div style="font-size:13px;color:var(--h);margin-top:4px">${days>0?`${days} days remaining`:'Expiring soon'}</div></div>`:`<div class="cd" style="text-align:center;padding:16px"><div style="font-size:14px;color:var(--h)">⏳ Awaiting payment confirmation from admin</div></div>`;$('subPayArea').style.display='none';return}
+$('subBody').innerHTML='<div class="sh">Choose a Plan</div><div class="pgc" id="subPlans"></div>'
+$('subPlans').innerHTML=[{id:'monthly',em:'📆',name:'Monthly',price:1200,desc:'Billed every month<br>Cancel anytime',badge:''},{id:'yearly',em:'📅',name:'Yearly',price:12000,desc:'2 months free<br>Only 1,000 ETB/mo',badge:'Best Value'}].map(p=>`<div class="plc${_subData.selected===p.id?' s':''}" onclick="selPlan('${p.id}')">${p.badge?`<div class="pbadge">${p.badge}</div>`:''}<div class="pb"><div class="pe">${p.em}</div><div class="pn">${p.name}</div><div class="pp">${p.price.toLocaleString()}<small> ETB</small></div><div class="pd">${p.desc}</div></div></div>`).join('')
+if(_subData.selected){loadPaymentMethods()}
+// If trial expired, auto-show plans
+if(st==='expired'||st==='trial'&&!isActive){$('subBody').innerHTML+='<button class="btn bp" style="margin-top:4px" onclick="selPlan(\'monthly\')">💳 Subscribe Now</button>'}
+}
+function selPlan(plan){const price=plan==='yearly'?12000:1200
+Telegram.WebApp.showConfirm(`${plan==='yearly'?'📅 Yearly — 12,000 ETB (2 months free)':'📆 Monthly — 1,200 ETB'}\n\nProceed to select this plan?`,async ok=>{if(!ok)return;const d=await ap('/api/business/subscription/select-plan',{method:'POST',body:JSON.stringify({plan})});if(d&&d.success){tt('✅ Plan selected','ok');lsub()}else{tt('Failed to select plan','er')}})}
+function loadPaymentMethods(){if(!_subData.payment_methods||!_subData.payment_methods.length)return
+$('subPayArea').style.display='block'
+$('subPayAccs').innerHTML=_subData.payment_methods.map(m=>`<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.04)"><div style="font-weight:600;font-size:14px">${m.name==='cbe'?'🏦 CBE Birr':'📱 Telebirr'}</div><div class="dl" style="margin-bottom:0"><div class="rw"><span class="lb">Account</span><span class="vl">${es(m.account_name||'')}</span></div><div class="rw"><span class="lb">Number</span><span class="vl" style="font-size:13px">${es(m.account_number||'')}</span></div></div></div>`).join('')}
+function statusLabel(st,days){if(st==='active')return days>0?`Active · ${days} days left`:'Active';if(st==='trial')return days>0?`Trial · ${days} days left`:'Trial Expired';if(st==='awaiting_payment')return'⏳ Awaiting Payment';if(st==='expired')return'⚠️ Trial Expired';if(st==='suspended')return'🔒 Suspended';return st}
+function subFile(i){const f=i.files[0];if(!f){_subFile=null;$('subRecName').style.display='none';$('subSubmitBtn').disabled=true;return}
+_subFile=f;$('subRecName').textContent='✅ '+f.name;$('subRecName').style.display='block';$('subSubmitBtn').disabled=false}
+async function subSubmit(){if(!_subFile){tt('Select a receipt image','er');return}
+ld(true);const b=await new Promise(r=>{const fr=new FileReader;fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(_subFile)})
+const d=await ap('/api/business/subscription/upload-receipt',{method:'POST',body:JSON.stringify({photo_data:b})})
+if(d&&d.success){tt('📩 Receipt submitted! Admin will verify.','ok');_subFile=null;$('subRecName').style.display='none';$('subSubmitBtn').disabled=true;lsub()}
+else{tt('Upload failed','er');ld(false)}}
 
 ldd();
 </script>
@@ -1063,6 +1118,93 @@ async def biz_order_detail(request: Request, order_id: int):
             return {"id": o.id, "customer_name": o.customer_name, "customer_phone": o.customer_phone, "customer_address": o.customer_address, "total_price": str(o.total_price), "status": o.status, "created_at": o.created_at.isoformat() if o.created_at else "", "items": [{"product_name": i.product_name, "quantity": i.quantity, "unit_price": str(i.unit_price)} for i in items]}
     except HTTPException:
         raise
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════
+# BUSINESS OWNER API ENDPOINTS (continued)
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/business/subscription")
+async def biz_subscription(request: Request):
+    biz_data = await _require_business(request)
+    b = biz_data["business"]
+    from bot.handlers import _get_subscription_status, _get_payment_methods
+    sub = _get_subscription_status(b)
+    methods = await _get_payment_methods()
+    return {
+        "status": b.subscription_status or "trial",
+        "plan": b.subscription_plan or None,
+        "active": sub["active"],
+        "days_left": sub.get("days_left", 0),
+        "label": sub.get("label", ""),
+        "selected": b.subscription_plan,
+        "payment_methods": [{"name": m.name, "bank_name": m.bank_name, "account_name": m.account_name, "account_number": m.account_number} for m in methods if m.is_active],
+    }
+
+
+@app.post("/api/business/subscription/select-plan")
+async def biz_select_plan(request: Request):
+    biz_data = await _require_business(request)
+    b = biz_data["business"]
+    try:
+        body = await request.json()
+        plan = body.get("plan", "monthly")
+        if plan not in ("monthly", "yearly"):
+            return {"error": "Invalid plan"}
+        from db.database import async_session
+        async with async_session() as s:
+            bb = await s.get(type(b), b.id)
+            bb.subscription_plan = plan
+            bb.subscription_status = "awaiting_payment"
+            await s.commit()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/business/subscription/upload-receipt")
+async def biz_upload_receipt(request: Request):
+    biz_data = await _require_business(request)
+    b = biz_data["business"]
+    try:
+        body = await request.json()
+        photo_data = body.get("photo_data")
+        if not photo_data:
+            return {"error": "No image data"}
+        import base64, logging
+        logger = logging.getLogger(__name__)
+        photo_bytes = base64.b64decode(photo_data)
+        from storage import upload_product_photo
+        url = await upload_product_photo(photo_bytes, b.id, f"sub_receipt_{b.id}")
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+        from config import ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, BOT_TOKEN
+        plan = b.subscription_plan or "monthly"
+        amount = SUBSCRIPTION_MONTHLY if plan == "monthly" else SUBSCRIPTION_YEARLY
+        bot = Bot(BOT_TOKEN)
+        msg = (
+            f"💳 *Payment Receipt Uploaded*\n\n"
+            f"Business: *{b.name}* (ID: {b.id})\n"
+            f"Plan: *{plan.capitalize()}*\n"
+            f"Amount: *{amount:,} ETB*\n"
+        )
+        if url:
+            msg += f"[View Receipt]({url})\n"
+        msg += "\nVerify and confirm:"
+        try:
+            await bot.send_message(
+                ADMIN_TELEGRAM_ID,
+                msg,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Confirm Payment", callback_data=f"sub_confirm_{b.id}_{plan}")],
+                ]),
+            )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning("Failed to notify admin: %s", e)
+        return {"success": True}
     except Exception as e:
         return {"error": str(e)}
 
