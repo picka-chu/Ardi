@@ -500,9 +500,16 @@ async def cmd_businesses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = _utcnow()
         active_businesses = []
         for b in all_businesses:
-            if b.subscription_status == "trial" and b.trial_end and now >= b.trial_end:
+            # Guard against timezone-naive DB values
+            te = b.trial_end
+            se = b.subscription_end
+            if te is not None and te.tzinfo is None:
+                te = te.replace(tzinfo=datetime.UTC)
+            if se is not None and se.tzinfo is None:
+                se = se.replace(tzinfo=datetime.UTC)
+            if b.subscription_status == "trial" and te and now >= te:
                 continue
-            if b.subscription_status == "active" and b.subscription_end and now >= b.subscription_end:
+            if b.subscription_status == "active" and se and now >= se:
                 continue
             active_businesses.append(b)
         # Exclude the user's own business so they don't chat with themselves
@@ -3007,6 +3014,12 @@ def _get_subscription_status(business) -> dict:
     status = business.subscription_status or "trial"
     trial_end = business.trial_end
     sub_end = business.subscription_end
+
+    # Defensive: make naive DB datetimes timezone-aware (migration may have left them as TIMESTAMP)
+    if trial_end is not None and trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=datetime.UTC)
+    if sub_end is not None and sub_end.tzinfo is None:
+        sub_end = sub_end.replace(tzinfo=datetime.UTC)
 
     if status == "trial":
         if trial_end and now >= trial_end:

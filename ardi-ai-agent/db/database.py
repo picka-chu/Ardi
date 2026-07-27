@@ -89,10 +89,10 @@ async def init_db():
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS business_hours_end VARCHAR(5)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS ai_offline_message TEXT",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'trial'",
-            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS trial_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS trial_end TIMESTAMP",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS trial_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS trial_end TIMESTAMPTZ",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(10)",
-            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subscription_end TIMESTAMP",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS subscription_end TIMESTAMPTZ",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS orders_enabled BOOLEAN DEFAULT FALSE",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_name VARCHAR(100)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_account VARCHAR(100)",
@@ -107,6 +107,10 @@ async def init_db():
                 "ALTER TABLE products ALTER COLUMN price TYPE NUMERIC(10,2)",
                 "ALTER TABLE orders ALTER COLUMN total_price TYPE NUMERIC(10,2)",
                 "ALTER TABLE order_items ALTER COLUMN unit_price TYPE NUMERIC(10,2)",
+                # Fix timezone-naive columns (TIMESTAMP → TIMESTAMPTZ) for existing databases
+                "ALTER TABLE businesses ALTER COLUMN trial_start TYPE TIMESTAMPTZ USING trial_start AT TIME ZONE 'UTC'",
+                "ALTER TABLE businesses ALTER COLUMN trial_end TYPE TIMESTAMPTZ USING trial_end AT TIME ZONE 'UTC'",
+                "ALTER TABLE businesses ALTER COLUMN subscription_end TYPE TIMESTAMPTZ USING subscription_end AT TIME ZONE 'UTC'",
             ])
         if _is_sqlite(DATABASE_URL):
             migration_sql = [s.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN") for s in migration_sql]
