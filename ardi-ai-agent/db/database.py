@@ -129,8 +129,8 @@ async def init_db():
     # Seed default payment methods if empty
     from db.models import PaymentMethod
     async with async_session() as seed_session:
-        existing = await seed_session.execute(select(PaymentMethod))
-        if not existing.scalar_one_or_none():
+        existing = await seed_session.execute(select(PaymentMethod).limit(1))
+        if not existing.first():
             from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
             seed_session.add_all([
                 PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME, account_number=str(CBE_ACCOUNT_NUMBER), is_active=True),
