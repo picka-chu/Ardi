@@ -8,6 +8,13 @@ from config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
+# Render/Supabase dashboards hand out plain `postgresql://` URLs, but this app
+# only speaks async. Normalize so a missing `+asyncpg` can't crash startup.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL[len("postgres://"):]
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL[len("postgresql://"):]
+
 
 def _make_engine(url: str):
     # SQLite (aiosqlite) uses a singleton/queue pool that rejects
