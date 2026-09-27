@@ -7,10 +7,17 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./ardi_agent.db")
 
-if not TELEGRAM_TOKEN:
-    raise RuntimeError("TELEGRAM_TOKEN is required")
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY is required")
+
+def require_secrets() -> None:
+    """Validate runtime secrets. Called by main.py — not at import time,
+    so pytest / tooling / healthchecks can import config without secrets."""
+    missing = []
+    if not TELEGRAM_TOKEN:
+        missing.append("TELEGRAM_TOKEN")
+    if not GEMINI_API_KEY:
+        missing.append("GEMINI_API_KEY")
+    if missing:
+        raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 
 # Cloudflare R2 (free tier — 10GB storage)
 R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY", "")

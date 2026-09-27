@@ -29,7 +29,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import TELEGRAM_TOKEN, SENTRY_DSN
+from config import TELEGRAM_TOKEN, SENTRY_DSN, require_secrets
 from db.database import init_db
 import miniapp
 from bot.handlers import (
@@ -56,6 +56,7 @@ from bot.handlers import (
     ADD_PRODUCT_CONFIRM,
     # Catalog
     cmd_catalog,
+    catalog_callback,
     # Channel
     cmd_connectchannel,
     scan_channel,
@@ -80,6 +81,7 @@ from bot.handlers import (
     cmd_sync_connection,
     handle_business_connection,
     handle_business_message,
+    handle_voice_message,
     # Business Hours
     cmd_business_hours,
     hours_set_start,
@@ -171,6 +173,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    require_secrets()
     persistence = DictPersistence()
 
     app = (
@@ -290,7 +293,7 @@ def main():
     # Telegram Business
     app.add_handler(BusinessConnectionHandler(handle_business_connection))
     app.add_handler(MessageHandler(
-        filters.UpdateType.BUSINESS_MESSAGE & filters.TEXT,
+        filters.UpdateType.BUSINESS_MESSAGE & (filters.TEXT | filters.VOICE),
         handle_business_message,
     ))
 
@@ -306,7 +309,16 @@ def main():
         handle_payment_screenshot,
     ))
 
-    # Callbacks
+    # Voice notes (transcribed, then processed as text)
+    app.add_handler(MessageHandler(
+        filters.VOICE & filters.ChatType.PRIVATE & ~filters.UpdateType.BUSINESS_MESSAGE,
+        handle_voice_message,
+    ))
+
+    # Callbacks — specific handlers first, generic menu_callback last
+    # otherwise the generic handler shadows lang_/admin_ callbacks.
+    app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
     app.add_handler(CallbackQueryHandler(toggle_ai_callback, pattern="^(activate_ai|deactivate_ai)$"))
     app.add_handler(CallbackQueryHandler(cmd_tone, pattern="^tone_menu$"))
     app.add_handler(CallbackQueryHandler(tone_callback, pattern="^set_tone_"))
@@ -314,6 +326,7 @@ def main():
     app.add_handler(CallbackQueryHandler(orders_page_callback, pattern="^orders_page_"))
     app.add_handler(CallbackQueryHandler(order_view_callback, pattern="^order_view_"))
     app.add_handler(CallbackQueryHandler(order_status_callback, pattern="^order_(confirm|complete|cancel)_"))
+    app.add_handler(CallbackQueryHandler(catalog_callback, pattern="^cat_"))
     app.add_handler(CallbackQueryHandler(hours_toggle_callback, pattern="^hours_toggle$"))
     app.add_handler(CallbackQueryHandler(escalation_callback, pattern="^escalation_"))
     app.add_handler(CallbackQueryHandler(subscription_callback, pattern="^sub_(monthly|yearly)$"))
@@ -321,9 +334,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_confirm_payment_callback, pattern="^sub_confirm_"))
     app.add_handler(CallbackQueryHandler(orders_toggle_callback, pattern="^orders_toggle$"))
     app.add_handler(CallbackQueryHandler(cmd_order_settings, pattern="^order_settings$"))
-    app.add_handler(CallbackQueryHandler(menu_callback))
-    app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"))
-    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern="^(register|addproduct|catalog|connectchannel|ai_settings|share|hours|browse_businesses|language|main_menu|noop|chat_business_|cat_)"))
 
 
 

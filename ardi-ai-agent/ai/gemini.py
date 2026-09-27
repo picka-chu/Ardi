@@ -152,6 +152,41 @@ async def verify_receipt(image_bytes: bytes) -> dict:
     return await loop.run_in_executor(None, _verify_receipt_sync, image_bytes)
 
 
+# ─── Voice Note Transcription ──────────────────────────────────────────────
+
+VOICE_TRANSCRIBE_PROMPT = """Transcribe this voice message verbatim.
+The speaker may use Amharic, English, or a mix of both — transcribe in the ORIGINAL language exactly as spoken (Ethiopic script for Amharic, Latin script for English).
+Return ONLY the transcript text, no quotes, no commentary, no timestamps.
+If the audio is silent, empty, or completely unintelligible, return exactly: [inaudible]"""
+
+
+def _transcribe_voice_sync(audio_bytes: bytes, mime_type: str = "audio/ogg") -> str | None:
+    """Transcribe a Telegram voice note. Returns transcript text, or None on failure."""
+    if not audio_bytes:
+        return None
+    try:
+        text = _call_model_sync(types.Content(
+            parts=[
+                types.Part(text=VOICE_TRANSCRIBE_PROMPT),
+                types.Part(inline_data=types.Blob(mime_type=mime_type, data=audio_bytes)),
+            ]
+        ))
+        text = (text or "").strip().strip('"').strip()
+        if not text or text == "[inaudible]":
+            return None
+        return text
+    except Exception as e:
+        logger.error("Voice transcription error: %s", e)
+        return None
+
+
+async def transcribe_voice(audio_bytes: bytes, mime_type: str = "audio/ogg") -> str | None:
+    if not audio_bytes:
+        return None
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _transcribe_voice_sync, audio_bytes, mime_type)
+
+
 # ─── Conversational Registration ────────────────────────────────────────────
 
 REGISTRATION_SYSTEM_PROMPT = """You are a registration assistant for Ardi AI, helping Ethiopian business owners set up their account.

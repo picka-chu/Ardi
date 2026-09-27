@@ -17,7 +17,7 @@ from telegram.ext import (
 from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, _utcnow
-from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt
+from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
 from bot.translations import _t, lang_kb
@@ -43,6 +43,20 @@ MEDIA_GROUP_CACHE: dict[str, float] = {}  # media_group_id -> timestamp
 MAX_TEXT_LENGTH = 2000
 MAX_PRICE = 9_999_999
 MAX_QUANTITY = 99_999
+MAX_VOICE_BYTES = 10 * 1024 * 1024  # Telegram voice notes cap at ~20MB; reject huge files early
+
+VOICE_TOO_LONG = (
+    "🎤 Your voice note is too long to process. Could you send a shorter one, or type your message?"
+    " / የድምጽ መልእክትዎ በጣም ረጅም ነው። እባክዎ አጭር ይላኩ ወይም ይጻፉ።"
+)
+VOICE_UNCLEAR = (
+    "🎤 I couldn't hear that clearly. Could you say it again, or type your message?"
+    " / ድምጽዎን በግልጽ አልሰማሁም። እባክዎ እንደገና ይላኩ ወይም ይጻፉ።"
+)
+VOICE_NO_CHAT = (
+    "🎤 I can listen to voice notes inside a customer chat. Open a store link to start shopping,"
+    " or type your message here."
+)
 
 
 def _is_media_group_duplicate(update: Update) -> bool:
@@ -198,6 +212,10 @@ async def get_user_language(telegram_id: int) -> str:
 
 async def resolve_identity(telegram_id: int) -> dict:
     """Determine the user's identity: role, business_id, business_name, etc."""
+    business_id = 0
+    business_name = ""
+    business_description = ""
+    role = "guest"
     async with async_session() as session:
         user = await get_user(session, telegram_id)
         business = None
@@ -212,19 +230,26 @@ async def resolve_identity(telegram_id: int) -> dict:
                 user.business_id = business.id
                 user.role = "business_owner"
                 await session.commit()
+        if user and user.role:
+            role = user.role
+        # Copy attributes inside session to avoid detached-instance access.
+        if business:
+            business_id = business.id
+            business_name = business.name
+            business_description = business.description or ""
 
-    if business:
+    if business_id:
         return {
             "telegram_id": telegram_id,
             "role": "business_owner",
-            "business_id": business.id,
-            "business_name": business.name,
-            "business_description": business.description or "",
-            "owner_name": business.name,
+            "business_id": business_id,
+            "business_name": business_name,
+            "business_description": business_description,
+            "owner_name": business_name,
         }
     return {
         "telegram_id": telegram_id,
-        "role": (user.role if user else "guest"),
+        "role": role,
         "business_id": 0,
         "business_name": "",
         "business_description": "",
@@ -237,6 +262,35 @@ async def get_business(session, chat_id):
     return result.scalar_one_or_none()
 
 
+def _parse_id_suffix(data: str, prefix: str) -> int | None:
+    """Safely parse integer ID suffix from callback data. Returns None on malformed input."""
+    try:
+        return int(data.replace(prefix, "", 1) if data.startswith(prefix) else data.split("_")[-1])
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+async def _require_owner_business(session, chat_id) -> Business | None:
+    """Return the caller's Business or None if not registered."""
+    return await get_business(session, chat_id)
+
+
+def _owns_order(business: Business | None, order) -> bool:
+    return bool(business and order and order.business_id == business.id)
+
+
+def _owns_product(business: Business | None, product) -> bool:
+    return bool(business and product and product.business_id == business.id)
+
+
+def _owns_escalation(business: Business | None, esc) -> bool:
+    return bool(business and esc and esc.business_id == business.id)
+
+
+def _is_admin(user_id: int) -> bool:
+    return bool(ADMIN_TELEGRAM_ID) and user_id == ADMIN_TELEGRAM_ID
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     args = context.args
@@ -244,7 +298,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Deep link: direct customer to business
     if args and args[0].startswith(BUSINESS_PREFIX):
-        bus_id = int(args[0].replace(BUSINESS_PREFIX, ""))
+        bus_id = _parse_id_suffix(args[0], BUSINESS_PREFIX)
+        if bus_id is None:
+            await update.message.reply_text(_t("business_unavailable", lang))
+            return
         async with async_session() as session:
             result = await session.execute(select(Business).where(Business.id == bus_id))
             business = result.scalar_one_or_none()
@@ -317,7 +374,10 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     elif data and data.startswith("chat_business_"):
-        bus_id = int(data.replace("chat_business_", ""))
+        bus_id = _parse_id_suffix(data, "chat_business_")
+        if bus_id is None:
+            await query.edit_message_text("Invalid business link.")
+            return
         return await start_customer_chat(update, context, bus_id)
     elif data == "main_menu":
         return await show_main_menu(update, context)
@@ -345,7 +405,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user:
             user.language = lang
             await session.commit()
-    _user_cache[chat_id] = lang
+    _user_cache[chat_id] = (lang, time.monotonic())
     context.user_data["lang"] = lang
 
     await query.edit_message_text(
@@ -654,7 +714,73 @@ async def handle_customer_photo(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
 
-async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_customer_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transcribe a customer voice note, then process it as a text message."""
+    voice = update.message.voice if update.message else None
+    if not voice:
+        return
+
+    # Don't process voice during payment wait — same rule as text
+    if context.user_data.get("state") == "awaiting_order_payment":
+        await update.message.reply_text(
+            "Please send a screenshot of your payment receipt so I can confirm your order."
+        )
+        return
+
+    if voice.file_size and voice.file_size > MAX_VOICE_BYTES:
+        await update.message.reply_text(VOICE_TOO_LONG)
+        return
+
+    await update.message.reply_chat_action("typing")
+
+    try:
+        file = await voice.get_file()
+        audio_bytes = bytes(await file.download_as_bytearray())
+    except Exception as e:
+        logger.warning("Voice download failed: %s", e)
+        await update.message.reply_text(VOICE_UNCLEAR)
+        return
+
+    if not audio_bytes or len(audio_bytes) > MAX_VOICE_BYTES:
+        await update.message.reply_text(VOICE_TOO_LONG if audio_bytes else VOICE_UNCLEAR)
+        return
+
+    transcript = await transcribe_voice(audio_bytes, voice.mime_type or "audio/ogg")
+    if not transcript:
+        await update.message.reply_text(VOICE_UNCLEAR)
+        return
+
+    # Reuse the full text pipeline (hours, subscription, sales reply, orders, escalation)
+    return await handle_customer_message(update, context, _text_override=transcript)
+
+
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Router for direct voice notes: payment states, customer chat, or hint."""
+    if not update.message or not update.message.voice:
+        return
+
+    state = context.user_data.get("state", "")
+    if state == "awaiting_order_payment":
+        await update.message.reply_text(
+            "Please send a photo of your payment receipt so I can verify it."
+        )
+        return
+
+    async with async_session() as session:
+        business = await get_business(session, update.effective_chat.id)
+
+    is_subscription = business and business.subscription_status == "awaiting_payment"
+    if is_subscription:
+        await update.message.reply_text("Please send a photo of your payment receipt.")
+        return
+
+    if context.user_data.get("customer_chat_active"):
+        return await handle_customer_voice(update, context)
+
+    await update.message.reply_text(VOICE_NO_CHAT)
+
+
+async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_TYPE, _text_override: str | None = None):
     if not context.user_data.get("customer_chat_active"):
         return
 
@@ -720,9 +846,10 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         )
 
     history = context.user_data.get("customer_chat_history", [])
-    response = await generate_sales_response(business_info, products_list, update.message.text, business.ai_tone, history, order_payment_info)
+    msg_text = _text_override if _text_override is not None else update.message.text
+    response = await generate_sales_response(business_info, products_list, msg_text, business.ai_tone, history, order_payment_info)
 
-    history.append({"role": "user", "text": update.message.text})
+    history.append({"role": "user", "text": msg_text})
     reply_text = response["reply"]
 
     # Handle photo request marker
@@ -822,7 +949,7 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
             f"I've notified the business owner about your request. They'll get back to you soon.",
             parse_mode="Markdown",
         )
-        await _notify_escalation(context, business, update.effective_user, reason, update.message.text, reply_text)
+        await _notify_escalation(context, business, update.effective_user, reason, msg_text, reply_text)
         history.append({"role": "assistant", "text": f"[Escalated: {reason}]"})
 
     else:
@@ -1034,12 +1161,19 @@ async def orders_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 async def order_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    order_id = int(query.data.replace("order_view_", ""))
+    order_id = _parse_id_suffix(query.data, "order_view_")
+    if order_id is None:
+        await query.edit_message_text("Invalid order link.")
+        return
 
     async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        if not business:
+            await query.edit_message_text("Register your business first with /register.")
+            return
         result = await session.execute(select(Order).where(Order.id == order_id))
         order = result.scalar_one_or_none()
-        if not order:
+        if not order or not _owns_order(business, order):
             await query.edit_message_text("Order not found.")
             return
         items_result = await session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
@@ -1073,13 +1207,23 @@ async def order_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     data = query.data
     parts = data.split("_")
+    if len(parts) < 3:
+        await query.edit_message_text("Invalid order action.")
+        return
     action = parts[0] + "_" + parts[1]
-    order_id = int(parts[2])
+    order_id = _parse_id_suffix(data, f"{action}_")
+    if order_id is None:
+        await query.edit_message_text("Invalid order action.")
+        return
 
     async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        if not business:
+            await query.edit_message_text("Register your business first with /register.")
+            return
         result = await session.execute(select(Order).where(Order.id == order_id))
         order = result.scalar_one_or_none()
-        if not order:
+        if not order or not _owns_order(business, order):
             await query.edit_message_text("Order not found.")
             return
 
@@ -1200,9 +1344,19 @@ async def escalation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     data = query.data
+    chat_id = update.effective_chat.id
 
     if data.startswith("escalation_reply_"):
-        esc_id = int(data.replace("escalation_reply_", ""))
+        esc_id = _parse_id_suffix(data, "escalation_reply_")
+        if esc_id is None:
+            await query.edit_message_text("Invalid escalation link.")
+            return
+        async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
+            esc = await session.get(EscalatedChat, esc_id)
+            if not esc or not _owns_escalation(business, esc):
+                await query.edit_message_text("Escalation not found.")
+                return
         context.user_data["replying_to_escalation"] = esc_id
         await query.edit_message_text(
             f"Reply to Escalation #{esc_id}:\n\n"
@@ -1211,12 +1365,18 @@ async def escalation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if data.startswith("escalation_done_"):
-        esc_id = int(data.replace("escalation_done_", ""))
+        esc_id = _parse_id_suffix(data, "escalation_done_")
+        if esc_id is None:
+            await query.edit_message_text("Invalid escalation link.")
+            return
         async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
             esc = await session.get(EscalatedChat, esc_id)
-            if esc:
-                esc.status = "resolved"
-                await session.commit()
+            if not esc or not _owns_escalation(business, esc):
+                await query.edit_message_text("Escalation not found.")
+                return
+            esc.status = "resolved"
+            await session.commit()
         await query.edit_message_text(f"✅ Escalation #{esc_id} marked as resolved.")
         return
 
@@ -1226,29 +1386,37 @@ async def handle_escalation_reply(update: Update, context: ContextTypes.DEFAULT_
     if not esc_id:
         return
 
+    chat_id = update.effective_chat.id
     async with async_session() as session:
+        business = await _require_owner_business(session, chat_id)
         esc = await session.get(EscalatedChat, esc_id)
-        if not esc or esc.status != "open":
+        if not esc or not _owns_escalation(business, esc):
+            await update.message.reply_text("Escalation not found.")
+            context.user_data.pop("replying_to_escalation", None)
+            return
+        if esc.status != "open":
             await update.message.reply_text("This escalation has already been resolved.")
             context.user_data.pop("replying_to_escalation", None)
             return
 
-        business = await session.get(Business, esc.business_id)
+        owner_business = await session.get(Business, esc.business_id)
+        business_name = owner_business.name if owner_business else "the business"
+        customer_telegram_id = esc.customer_telegram_id
 
     reply_text = update.message.text.strip()
     owner_name = update.effective_user.full_name or "Business Owner"
 
     try:
-        if not esc.customer_telegram_id:
+        if not customer_telegram_id:
             await update.message.reply_text("Cannot reply — customer info not available.")
             return
         msg = (
-            f"📬 *Reply from {business.name if business else 'the business'}*\n\n"
+            f"📬 *Reply from {business_name}*\n\n"
             f"{reply_text}\n\n"
             f"— {owner_name}"
         )
         await context.bot.send_message(
-            chat_id=esc.customer_telegram_id,
+            chat_id=customer_telegram_id,
             text=msg,
             parse_mode="Markdown",
         )
@@ -1660,7 +1828,7 @@ async def product_confirm_callback(update: Update, context: ContextTypes.DEFAULT
     data = query.data
 
     if data == "product_save":
-        await _save_product(update, context)
+        return await _save_product(update, context)
     elif data == "product_rename":
         await query.edit_message_text("What should the product name be?",
                                       reply_markup=InlineKeyboardMarkup(
@@ -1674,7 +1842,9 @@ async def product_confirm_callback(update: Update, context: ContextTypes.DEFAULT
         context.user_data["awaiting_reprice"] = True
         return ADD_PRODUCT_CONFIRM
     elif data == "product_cancel":
-        context.user_data.clear()
+        for k in ("awaiting_rename", "awaiting_reprice", "product_name",
+                  "product_price", "product_photo_id", "product_caption"):
+            context.user_data.pop(k, None)
         await query.edit_message_text("Cancelled.",
                                       reply_markup=InlineKeyboardMarkup([
                                           [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
@@ -1787,25 +1957,44 @@ async def catalog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    chat_id = update.effective_chat.id
 
     if data.startswith("cat_pg_"):
-        page = int(data.split("_")[-1])
+        page = _parse_id_suffix(data, "cat_pg_")
+        if page is None or page < 0:
+            page = 0
         await _catalog_page(update, context, page=page)
 
     elif data.startswith("cat_del_yes_"):
-        prod_id = int(data.split("_")[-1])
+        prod_id = _parse_id_suffix(data, "cat_del_yes_")
+        if prod_id is None:
+            await _catalog_page(update, context)
+            return
         async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
             p = await session.get(Product, prod_id)
-            if p:
+            if p and _owns_product(business, p):
                 await session.delete(p)
                 await session.commit()
+            else:
+                await query.edit_message_text("Product not found.")
+                return
         await _catalog_page(update, context)
 
     elif data.startswith("cat_del_no_"):
         await _catalog_page(update, context)
 
     elif data.startswith("cat_del_"):
-        prod_id = int(data.split("_")[-1])
+        prod_id = _parse_id_suffix(data, "cat_del_")
+        if prod_id is None:
+            await _catalog_page(update, context)
+            return
+        async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
+            p = await session.get(Product, prod_id)
+            if not p or not _owns_product(business, p):
+                await query.edit_message_text("Product not found.")
+                return
         await _send_or_edit(update, "Are you sure you want to delete this product?",
                             reply_markup=InlineKeyboardMarkup([
                                 [InlineKeyboardButton("✅ Yes, delete", callback_data=f"cat_del_yes_{prod_id}"),
@@ -1813,17 +2002,33 @@ async def catalog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             ]))
 
     elif data.startswith("cat_pr_"):
-        prod_id = int(data.split("_")[-1])
+        prod_id = _parse_id_suffix(data, "cat_pr_")
+        if prod_id is None:
+            await _catalog_page(update, context)
+            return
+        async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
+            p = await session.get(Product, prod_id)
+            if not p or not _owns_product(business, p):
+                await query.edit_message_text("Product not found.")
+                return
         context.user_data["state"] = f"awaiting_price_for_{prod_id}"
         await _send_or_edit(update, "What's the new price? (in ETB, e.g. 50)")
 
     elif data.startswith("cat_tog_"):
-        prod_id = int(data.split("_")[-1])
+        prod_id = _parse_id_suffix(data, "cat_tog_")
+        if prod_id is None:
+            await _catalog_page(update, context)
+            return
         async with async_session() as session:
+            business = await _require_owner_business(session, chat_id)
             p = await session.get(Product, prod_id)
-            if p:
+            if p and _owns_product(business, p):
                 p.available = not p.available
                 await session.commit()
+            else:
+                await query.edit_message_text("Product not found.")
+                return
         await _catalog_page(update, context)
 
 
@@ -2053,6 +2258,35 @@ async def handle_business_connection(update: Update, context: ContextTypes.DEFAU
             pass
 
 
+async def _transcribe_business_voice(context, connection_id: str, customer_chat_id: int, voice) -> str | None:
+    """Download + transcribe a voice note from a Telegram Business chat."""
+    async def _tell(text: str):
+        try:
+            await context.bot.send_message(chat_id=customer_chat_id, text=text,
+                                           business_connection_id=connection_id)
+        except Exception as e:
+            logger.warning("Business voice reply failed (conn=%s): %s", connection_id, e)
+
+    if voice.file_size and voice.file_size > MAX_VOICE_BYTES:
+        await _tell(VOICE_TOO_LONG)
+        return None
+    try:
+        file = await voice.get_file()
+        audio_bytes = bytes(await file.download_as_bytearray())
+    except Exception as e:
+        logger.warning("Business voice download failed (conn=%s): %s", connection_id, e)
+        await _tell(VOICE_UNCLEAR)
+        return None
+    if not audio_bytes or len(audio_bytes) > MAX_VOICE_BYTES:
+        await _tell(VOICE_TOO_LONG if audio_bytes else VOICE_UNCLEAR)
+        return None
+    transcript = await transcribe_voice(audio_bytes, voice.mime_type or "audio/ogg")
+    if not transcript:
+        await _tell(VOICE_UNCLEAR)
+        return None
+    return transcript
+
+
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _business_chat_histories
     message = update.business_message
@@ -2067,6 +2301,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     elif message.photo:
         logger.info("Business photo message from customer %s on connection %s - not yet supported", customer_chat_id, connection_id)
         return
+    elif message.voice:
+        customer_text = await _transcribe_business_voice(context, connection_id, customer_chat_id, message.voice)
+        if not customer_text:
+            return
     else:
         return
 
@@ -2850,7 +3088,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with async_session() as session:
             from sqlalchemy import text
             await session.execute(text("SELECT 1"))
-        await update.message.reply_text("✅ Ardi AI is running.\nDatabase: connected.\nGemini API: configured." if GEMINI_API_KEY else "Gemini API key missing.")
+        await update.message.reply_text("✅ Ardi AI is running.\nDatabase: connected.\nAI engine: ready." if GEMINI_API_KEY else "AI engine not configured.")
     except Exception as e:
         await update.message.reply_text(f"❌ Health check failed: {e}")
 
@@ -2932,8 +3170,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 from sqlalchemy import text
                 await s.execute(text("SELECT 1"))
             await query.edit_message_text(
-                "✅ *Health*\nBot: running\nDB: connected\nGemini: configured"
-                if GEMINI_API_KEY else "Gemini API key missing.",
+                "✅ *Health*\nBot: running\nDB: connected\nAI: ready"
+                if GEMINI_API_KEY else "AI engine not configured.",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -2953,7 +3191,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with async_session() as s:
             businesses = await s.execute(
                 select(Business).where(
-                    Business.subscription_status.in_(["trial", "expired"])
+                    Business.subscription_status == "awaiting_payment"
                 )
             )
             businesses = businesses.scalars().all()
@@ -3129,10 +3367,25 @@ async def payment_notify_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     data = query.data
     parts = data.split("_")
-    biz_id = int(parts[2])
+    if len(parts) < 4:
+        await query.edit_message_text("Invalid payment link.")
+        return
+    biz_id = None
+    try:
+        biz_id = int(parts[2])
+    except (ValueError, TypeError):
+        await query.edit_message_text("Invalid payment link.")
+        return
     plan = parts[3]
+    if plan not in ("monthly", "yearly"):
+        await query.edit_message_text("Invalid plan.")
+        return
 
     async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        if not business or business.id != biz_id:
+            await query.edit_message_text("Payment link does not match your business.")
+            return
         result = await session.execute(select(Business).where(Business.id == biz_id))
         business = result.scalar_one_or_none()
         biz_name = business.name if business else "Unknown"
@@ -3161,10 +3414,23 @@ async def payment_notify_callback(update: Update, context: ContextTypes.DEFAULT_
 async def admin_confirm_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if not _is_admin(update.effective_user.id):
+        await query.edit_message_text("Admin only.")
+        return
     data = query.data
     parts = data.split("_")
-    biz_id = int(parts[2])
+    if len(parts) < 4:
+        await query.edit_message_text("Invalid payment link.")
+        return
+    try:
+        biz_id = int(parts[2])
+    except (ValueError, TypeError):
+        await query.edit_message_text("Invalid payment link.")
+        return
     plan = parts[3]
+    if plan not in ("monthly", "yearly"):
+        await query.edit_message_text("Invalid plan.")
+        return
 
     ok = await _activate_subscription(context, biz_id, plan)
     if ok:

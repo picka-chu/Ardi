@@ -21,9 +21,17 @@ async def backup_database() -> str | None:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
         if "sqlite" in DATABASE_URL:
-            db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
-            if not db_path:
-                db_path = "ardi.db"
+            # Handle sqlite+aiosqlite:///./ardi_agent.db, sqlite:///... etc.
+            db_path = DATABASE_URL.split(":///", 1)[-1] if ":///" in DATABASE_URL else DATABASE_URL
+            if not db_path or db_path == DATABASE_URL:
+                db_path = "ardi_agent.db"
+            if not os.path.isfile(db_path):
+                # Fall back to legacy name used by older releases.
+                alt = "ardi.db" if os.path.basename(db_path) != "ardi.db" else "ardi_agent.db"
+                db_path = alt if os.path.isfile(alt) else db_path
+            if not os.path.isfile(db_path):
+                logger.error("SQLite file not found: %s", db_path)
+                return None
             backup_path = os.path.join(BACKUP_DIR, f"backup_{ts}.db")
             shutil.copy2(db_path, backup_path)
             logger.info("Database backed up to %s", backup_path)

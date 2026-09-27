@@ -7,7 +7,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ["GEMINI_API_KEY"] = "test-key"
 os.environ["TELEGRAM_TOKEN"] = "123:fake"
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{tempfile.mktemp(suffix='.db')}"
+_fd, _db_path = tempfile.mkstemp(suffix=".db")
+os.close(_fd)
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_db_path}"
 os.environ["ADMIN_TELEGRAM_ID"] = "99999"
 
 from sqlalchemy import select

@@ -9,28 +9,39 @@ from config import DATABASE_URL
 logger = logging.getLogger(__name__)
 
 
+def _make_engine(url: str):
+    # SQLite (aiosqlite) uses a singleton/queue pool that rejects
+    # pool_size / max_overflow / pool_pre_ping — only pass those for server DBs.
+    if _is_sqlite(url):
+        return create_async_engine(url, echo=False)
+    return create_async_engine(
+        url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
+
+
 class _SessionFactory:
     """Creates one engine per event loop — safe for bot + uvicorn (different loops)."""
     def __init__(self):
         self._engines: dict[int, any] = {}
         self._makers: dict[int, any] = {}
 
+    def _ensure(self, loop_id: int):
+        if loop_id not in self._engines:
+            self._engines[loop_id] = _make_engine(DATABASE_URL)
+            self._makers[loop_id] = async_sessionmaker(
+                self._engines[loop_id], class_=AsyncSession, expire_on_commit=False
+            )
+
     def __call__(self):
         try:
             loop_id = id(asyncio.get_running_loop())
         except RuntimeError:
             loop_id = 0
-        if loop_id not in self._engines:
-            self._engines[loop_id] = create_async_engine(
-                DATABASE_URL,
-                echo=False,
-                pool_size=5,
-                max_overflow=10,
-                pool_pre_ping=True,
-            )
-            self._makers[loop_id] = async_sessionmaker(
-                self._engines[loop_id], class_=AsyncSession, expire_on_commit=False
-            )
+        self._ensure(loop_id)
         return self._makers[loop_id]()
 
     @property
@@ -39,18 +50,17 @@ class _SessionFactory:
             loop_id = id(asyncio.get_running_loop())
         except RuntimeError:
             loop_id = 0
-        if loop_id not in self._engines:
-            self._engines[loop_id] = create_async_engine(
-                DATABASE_URL,
-                echo=False,
-                pool_size=5,
-                max_overflow=10,
-                pool_pre_ping=True,
-            )
-            self._makers[loop_id] = async_sessionmaker(
-                self._engines[loop_id], class_=AsyncSession, expire_on_commit=False
-            )
+        self._ensure(loop_id)
         return self._engines[loop_id]
+
+    async def dispose_all(self):
+        for eng in list(self._engines.values()):
+            try:
+                await eng.dispose()
+            except Exception:
+                pass
+        self._engines.clear()
+        self._makers.clear()
 
 
 async_session = _SessionFactory()
@@ -118,23 +128,34 @@ async def init_db():
         for sql in migration_sql:
             try:
                 await conn.execute(text(sql))
-                table_col = sql.split("ADD COLUMN")[1].strip().split(" ")[0]
+                if "ADD COLUMN" in sql:
+                    table_col = sql.split("ADD COLUMN")[1].strip().split(" ")[0]
+                else:
+                    table_col = sql.split()[0:4]
+                    table_col = " ".join(table_col)
                 logger.info("Ran migration: %s", table_col)
             except Exception as e:
                 if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
-                    logger.debug("Column already exists: %s", sql.split()[2])
+                    logger.debug("Column already exists: %s", sql[:80])
                 else:
                     logger.warning("Migration warning: %s", e)
 
-    # Seed default payment methods if empty
+    # Seed default payment methods if empty (idempotent — check per name)
     from db.models import PaymentMethod
     async with async_session() as seed_session:
-        existing = await seed_session.execute(select(PaymentMethod).limit(1))
-        if not existing.first():
-            from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
-            seed_session.add_all([
-                PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME, account_number=str(CBE_ACCOUNT_NUMBER), is_active=True),
-                PaymentMethod(name="telebirr", bank_name="Telebirr", account_name=TELEBIRR_ACCOUNT_NAME, account_number=str(TELEBIRR_ACCOUNT_NUMBER), is_active=True),
-            ])
-            await seed_session.commit()
-            logger.info("Seeded default payment methods")
+        existing = await seed_session.execute(select(PaymentMethod))
+        existing_names = {p.name for p in existing.scalars().all()}
+        from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
+        to_add = []
+        if "cbe" not in existing_names:
+            to_add.append(PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME, account_number=str(CBE_ACCOUNT_NUMBER), is_active=True))
+        if "telebirr" not in existing_names:
+            to_add.append(PaymentMethod(name="telebirr", bank_name="Telebirr", account_name=TELEBIRR_ACCOUNT_NAME, account_number=str(TELEBIRR_ACCOUNT_NUMBER), is_active=True))
+        if to_add:
+            seed_session.add_all(to_add)
+            try:
+                await seed_session.commit()
+                logger.info("Seeded default payment methods")
+            except Exception as e:
+                await seed_session.rollback()
+                logger.warning("Payment method seed skipped: %s", e)
