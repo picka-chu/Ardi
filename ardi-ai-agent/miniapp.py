@@ -115,7 +115,7 @@ async def _require_business(request: Request):
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"])
 async def health():
     age = time.monotonic() - bot_last_heartbeat
     if age > HEARTBEAT_TIMEOUT:
