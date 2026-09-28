@@ -7,6 +7,7 @@ import datetime
 import logging
 import os
 from collections import defaultdict
+from decimal import Decimal
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -105,7 +106,24 @@ def _validate_price(price_str: str) -> str | None:
     return None
 
 
+def _money(value) -> Decimal:
+    """Coerce money from any source (None, float, str, Decimal) to Decimal.
+
+    Legacy rows may hold floats; mixing float with Decimal raises TypeError,
+    so every order-total path must go through here.
+    """
+    if value is None:
+        return Decimal("0.00")
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0.00")
+
+
 def _validate_quantity(qty_str: str) -> str | None:
+
     try:
         val = int(qty_str)
         if val < 1 or val > MAX_QUANTITY:
@@ -896,13 +914,13 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
             return
 
         if business.orders_enabled and business.order_bank_name and business.order_bank_account:
-            total = 0.0
+            total = Decimal("0.00")
             for item in data.get("items", []):
                 pname = item.get("product", "")
                 qty = int(item.get("quantity", 1))
                 for p in products:
                     if p.name.lower() == pname.lower():
-                        total += (p.price or 0.0) * qty
+                        total += _money(p.price) * qty
                         break
             context.user_data["pending_order"] = {
                 "business_id": business.id,
@@ -988,15 +1006,15 @@ async def _create_order_in_session(s, business, customer_user, data, products):
     if not items_list:
         raise ValueError("Order must have at least one item")
 
-    total = 0.0
+    total = Decimal("0.00")
     validated_items = []
     for item in items_list:
         pname = item.get("product", "")
         qty = int(item.get("quantity", 1))
-        unit_price = 0.0
+        unit_price = Decimal("0.00")
         for p in products:
             if p.name.lower() == pname.lower():
-                unit_price = p.price or 0.0
+                unit_price = _money(p.price)
                 break
         total += unit_price * qty
         validated_items.append((pname, qty, unit_price))
