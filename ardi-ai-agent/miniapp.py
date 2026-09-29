@@ -362,18 +362,11 @@ BIZ_HTML = r"""<!DOCTYPE html>
     input,textarea,select,button{font-family:inherit;color:inherit}
     button{-webkit-tap-highlight-color:transparent}
     .wrap{max-width:480px;margin:0 auto;padding:0 16px}
-    /* top bar */
-    .top{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--sep)}
-    .top-in{max-width:480px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px}
+    /* business identity lives in the Home hero card; the app bar itself is Telegram native */
     .ava{width:42px;height:42px;border-radius:14px;background:var(--grad);display:flex;align-items:center;justify-content:center;
       font-size:20px;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(108,92,231,.35)}
-    .t-id{flex:1;min-width:0}.t-id h1{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .t-id p{font-size:12px;color:var(--hint);font-weight:500;display:flex;align-items:center;gap:6px}
     .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
     .dot.off{background:var(--hint)}
-    .icon-btn{width:38px;height:38px;border-radius:12px;border:1px solid var(--sep);background:var(--card);color:var(--text);
-      font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .icon-btn:active{transform:scale(.93)}
     .planbar{max-width:480px;margin:0 auto;padding:10px 16px 0}
     .planbar-in{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--rs);font-size:13px;font-weight:600;cursor:pointer;border:1px solid}
     .planbar-in.warn{background:rgba(255,165,2,.1);border-color:rgba(255,165,2,.25);color:var(--warn)}
@@ -420,7 +413,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .empty{padding:48px 20px;text-align:center;color:var(--hint)}.empty .e{margin-bottom:12px;color:var(--hint);opacity:.75;display:flex;justify-content:center}
     .empty .t{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}.empty .s{font-size:13px;margin-bottom:14px}
     /* toolbar, chips, inputs */
-    .toolbar{position:sticky;top:62px;z-index:40;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(12px);
+    .toolbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(12px);
       -webkit-backdrop-filter:blur(12px);padding:8px 0 10px}
     .search{width:100%;padding:12px 16px 12px 40px;border-radius:12px;border:1px solid var(--sep);background:var(--card);
       font-size:14px;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e8e9e' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
@@ -511,12 +504,6 @@ BIZ_HTML = r"""<!DOCTYPE html>
 <div class="loader" id="loader"></div>
 <div class="toast" id="toast"></div>
 
-<header class="top"><div class="top-in">
-  <div class="ava" id="ava">A</div>
-  <div class="t-id"><h1 id="bizName">Ardi Business</h1><p><span class="dot" id="aiDot"></span><span id="bizSub">Connecting…</span></p></div>
-  <button class="icon-btn" id="langBtn" onclick="toggleLang()" title="Language">EN</button>
-  <button class="icon-btn" id="shareBtn" onclick="openShare()" title="Share"><span data-ic="share" data-sz="18"></span></button>
-</div></header>
 <div class="planbar" id="planBar" hidden><div class="planbar-in warn" id="planBarIn" onclick="go('plan')"><span data-ic="clock" data-sz="15"></span><span id="planBarTx"></span></div></div>
 
 <div class="wrap">
@@ -527,6 +514,11 @@ BIZ_HTML = r"""<!DOCTYPE html>
 <div id="app">
 <!-- HOME -->
 <section class="pg on" id="pg-home">
+  <div class="card" style="padding:12px 16px"><div class="row" style="border:none;padding:2px 0">
+    <div class="ava" id="ava">A</div>
+    <div class="tx"><div class="t1" id="bizName" style="font-size:16px">Ardi Business</div>
+    <div class="t2"><span class="dot" id="aiDot"></span> <span id="bizSub">Connecting…</span></div></div>
+  </div></div>
   <div class="grid2" id="stats"></div>
   <div class="sec-t" data-i="quick">Quick actions</div>
   <div class="qa">
@@ -711,7 +703,7 @@ rec_ok:'ደረሰኝ ተልኳል! አድሚን ያረጋግጣል። 📩',sel_
 enter_hrs:'መጀመሪያ እና መጨረሻ ሰዓት ያስገቡ (HH:MM)',bad_hrs:'የ24-ሰዓት ቅርጸት ይጠቀሙ ለምሳሌ 09:00',call:'ደውል',chat:'ውይይት'}};
 let LANG=localStorage.getItem('ardi_lang')||(((tg?.initDataUnsafe?.user?.language_code)||'en').startsWith('am')?'am':'en');
 const t=k=>(T[LANG]&&T[LANG][k])??T.en[k]??k;
-function applyI18n(){ document.querySelectorAll('[data-i]').forEach(el=>{el.textContent=t(el.dataset.i)}); document.querySelectorAll('[data-i-ph]').forEach(el=>{el.placeholder=t(el.dataset.iPh)}); $('langBtn').textContent=LANG==='am'?'EN':'አማ'; const ln=$('langName'); if(ln)ln.textContent=LANG==='am'?'አማርኛ':'English'; }
+function applyI18n(){ document.querySelectorAll('[data-i]').forEach(el=>{el.textContent=t(el.dataset.i)}); document.querySelectorAll('[data-i-ph]').forEach(el=>{el.placeholder=t(el.dataset.iPh)}); const ln=$('langName'); if(ln)ln.textContent=LANG==='am'?'አማርኛ':'English'; }
 function toggleLang(){ LANG=LANG==='am'?'en':'am'; localStorage.setItem('ardi_lang',LANG); applyI18n(); renderAll(); hap('light'); }
 
 /* ── router + sheets ── */
@@ -1026,7 +1018,14 @@ async function openShare(){
 function copyLink(){ const l=S.shareLink||''; (navigator.clipboard?navigator.clipboard.writeText(l):Promise.reject()).then(()=>toast(t('copied'),'ok')).catch(()=>{try{tg?.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(l))}catch(e){toast(l)}}); }
 
 /* ── boot ── */
-applyI18n(); paintIcons(); loadHome();
+/* Use Telegram's native chrome: blend header/background/bottom bar, follow theme. */
+function nativeChrome(){ if(!tg)return; try{
+  const p=tg.themeParams||{}, bg=p.bg_color||'#0e0e1a';
+  try{tg.setHeaderColor(bg)}catch(e){} try{tg.setBackgroundColor(bg)}catch(e){}
+  try{tg.setBottomBarColor(p.secondary_bg_color||p.bg_color||bg)}catch(e){}
+}catch(e){} }
+if(tg){ try{tg.onEvent('themeChanged',nativeChrome)}catch(e){} }
+applyI18n(); paintIcons(); nativeChrome(); loadHome();
 </script>
 </body>
 </html>"""
