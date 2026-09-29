@@ -98,6 +98,8 @@ from bot.handlers import (
     cmd_trial,
     cmd_plans,
     subscription_callback,
+    chapa_pay_callback,
+    chapa_check_callback,
     payment_notify_callback,
     admin_confirm_payment_callback,
     handle_payment_screenshot,
@@ -330,6 +332,8 @@ def main():
     app.add_handler(CallbackQueryHandler(hours_toggle_callback, pattern="^hours_toggle$"))
     app.add_handler(CallbackQueryHandler(escalation_callback, pattern="^escalation_"))
     app.add_handler(CallbackQueryHandler(subscription_callback, pattern="^sub_(monthly|yearly)$"))
+    app.add_handler(CallbackQueryHandler(chapa_pay_callback, pattern="^sub_chapa_(monthly|yearly)$"))
+    app.add_handler(CallbackQueryHandler(chapa_check_callback, pattern="^sub_chapacheck_"))
     app.add_handler(CallbackQueryHandler(payment_notify_callback, pattern="^sub_paid_"))
     app.add_handler(CallbackQueryHandler(admin_confirm_payment_callback, pattern="^sub_confirm_"))
     app.add_handler(CallbackQueryHandler(orders_toggle_callback, pattern="^orders_toggle$"))

@@ -19,6 +19,7 @@ from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
+import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
 from bot.translations import _t, lang_kb
@@ -3388,10 +3389,116 @@ async def subscription_callback(update: Update, context: ContextTypes.DEFAULT_TY
         "\n\n*After paying, send a screenshot of the receipt here.*\n"
         "I'll verify it automatically!",
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(
+            ([[InlineKeyboardButton("💳 Pay instantly with Chapa", callback_data=f"sub_chapa_{plan}")]]
+             if chapa.chapa_configured() else [])
+            + [[InlineKeyboardButton("📩 Notify Admin I've Paid", callback_data=f"sub_paid_{biz_id}_{plan}")]],
+        ),
+    )
+
+
+async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start a Chapa checkout for the owner's selected plan."""
+    query = update.callback_query
+    await query.answer()
+    plan = query.data.replace("sub_chapa_", "", 1)
+    if plan not in ("monthly", "yearly"):
+        await query.edit_message_text("Invalid plan.")
+        return
+    if not chapa.chapa_configured():
+        await query.edit_message_text("Card payments are not available right now. Please use bank transfer.")
+        return
+
+    chat_id = update.effective_chat.id
+    async with async_session() as session:
+        business = await _require_owner_business(session, chat_id)
+        if not business:
+            await query.edit_message_text("Register your business first with /register.")
+            return
+        business.subscription_plan = plan
+        business.subscription_status = "awaiting_payment"
+        await session.commit()
+        biz_id, amount = business.id, chapa.plan_amount(plan)
+
+    from config import MINI_APP_URL
+    base = (_miniapp_base() or (MINI_APP_URL or "").strip().rstrip("/")) or "https://t.me"
+    co = await chapa.create_checkout(
+        business, plan,
+        return_url=f"{base}/business",
+        callback_url=f"{base}/api/chapa/webhook",
+    )
+    if not co:
+        await query.edit_message_text("Couldn't start the Chapa checkout. Please try again or use bank transfer.")
+        return
+
+    from db.models import SubscriptionPayment
+    from decimal import Decimal as _D
+    async with async_session() as session:
+        session.add(SubscriptionPayment(
+            business_id=biz_id, plan=plan, amount=_D(amount),
+            tx_ref=co["tx_ref"], checkout_url=co["checkout_url"],
+        ))
+        await session.commit()
+        pay_id = (await session.execute(
+            select(SubscriptionPayment).where(SubscriptionPayment.tx_ref == co["tx_ref"])
+        )).scalar_one().id
+
+    await query.edit_message_text(
+        f"💳 *Pay {amount:,} ETB with Chapa*\n\n"
+        f"Plan: *{plan.capitalize()}*\n\n"
+        "Tap below to pay securely (Telebirr, CBE, cards). "
+        "Your subscription activates automatically once paid.",
+        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📩 Notify Admin I've Paid", callback_data=f"sub_paid_{biz_id}_{plan}")],
+            [InlineKeyboardButton("💳 Open Chapa Checkout", url=co["checkout_url"])],
+            [InlineKeyboardButton("✅ I've Paid — Verify", callback_data=f"sub_chapacheck_{pay_id}")],
         ]),
     )
+
+
+async def chapa_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner tapped 'I've paid' — verify server-side and activate."""
+    query = update.callback_query
+    await query.answer()
+    pay_id = _parse_id_suffix(query.data, "sub_chapacheck_")
+    if pay_id is None:
+        await query.edit_message_text("Invalid payment link.")
+        return
+
+    from db.models import SubscriptionPayment
+    async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        pay = await session.get(SubscriptionPayment, pay_id)
+        if not business or not pay or pay.business_id != business.id:
+            await query.edit_message_text("Payment not found.")
+            return
+        tx_ref, plan, biz_id = pay.tx_ref, pay.plan, pay.business_id
+
+    verdict = await chapa.verify_payment(tx_ref)
+    if not verdict.get("paid"):
+        await query.edit_message_text(
+            "⏳ Payment not confirmed yet.\n\n"
+            "If you just paid, wait a minute and tap Verify again.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔁 Verify Again", callback_data=f"sub_chapacheck_{pay_id}")],
+            ]),
+        )
+        return
+
+    async with async_session() as session:
+        pay = await session.get(SubscriptionPayment, pay_id)
+        if pay.status != "paid":
+            pay.status = "paid"
+            pay.chapa_ref = (verdict.get("chapa_ref") or "")[:100]
+            await session.commit()
+    ok = await _activate_subscription(context, biz_id, plan)
+    if ok:
+        await query.edit_message_text(
+            f"🎉 *Subscription Activated!*\n\nPlan: *{plan.capitalize()}*\nPayment received via Chapa.",
+            parse_mode="Markdown",
+        )
+    else:
+        await query.edit_message_text("Payment confirmed — activation hit a snag. Contact support.")
 
 
 async def payment_notify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

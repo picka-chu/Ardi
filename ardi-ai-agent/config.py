@@ -48,5 +48,9 @@ TELEBIRR_ACCOUNT_NUMBER = os.getenv("TELEBIRR_ACCOUNT_NUMBER", "0930529985")
 # Sentry (optional — set SENTRY_DSN in .env to enable)
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
+# Chapa (Ethiopian gateway) — instant subscription checkout.
+# Get it at dashboard.chapa.co > API. Test keys start with CHASECK_TEST-.
+CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "")
+
 # Mini App
 MINI_APP_URL = os.getenv("MINI_APP_URL", "")  # e.g. https://ardi-admin.vercel.app

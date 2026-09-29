@@ -379,7 +379,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .planbar-in.warn{background:rgba(255,165,2,.1);border-color:rgba(255,165,2,.25);color:var(--warn)}
     .planbar-in.bad{background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.25);color:var(--bad)}
     /* pages & nav */
-    .pg{display:none;padding:16px 0 8px}.pg.on{display:block;animation:fade .25s ease}
+    .pg{display:none;padding:20px 0 10px}.pg.on{display:block;animation:fade .25s ease}
     @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
     .nav{position:fixed;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--card) 92%,transparent);border-top:1px solid var(--sep);
       display:flex;z-index:100;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);padding-bottom:env(safe-area-inset-bottom)}
@@ -392,7 +392,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .ni .bdg{position:absolute;top:5px;right:calc(50% - 22px)}
     .qa button{position:relative}.qa .bdg{position:absolute;top:6px;right:8px}
     /* cards & stats */
-    .card{background:var(--card);border:1px solid var(--sep);border-radius:var(--r);padding:16px;margin-bottom:12px}
+    .card{background:var(--card);border:1px solid var(--sep);border-radius:var(--r);padding:18px;margin-bottom:12px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
     .stat{background:var(--card);border:1px solid var(--sep);border-radius:var(--r);padding:14px}
     .stat .ic{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px}
@@ -408,7 +408,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--sep);cursor:pointer}
     .row:last-child{border-bottom:none}.row:active{opacity:.6}
     .row .im{width:44px;height:44px;border-radius:12px;object-fit:cover;background:var(--sec);flex-shrink:0}
-    .row .im.ph{display:flex;align-items:center;justify-content:center;font-size:20px}
+    .row .im.ph{display:flex;align-items:center;justify-content:center;color:var(--hint)}
     .row .tx{flex:1;min-width:0}.row .t1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .row .t2{font-size:12px;color:var(--hint);margin-top:2px}
     .row .rt{text-align:right;flex-shrink:0}
@@ -417,7 +417,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .p-bad{background:rgba(255,71,87,.14);color:var(--bad)}.p-info{background:rgba(54,164,255,.14);color:var(--info)}
     .p-brand{background:rgba(108,92,231,.14);color:var(--link)}
     .amt{font-weight:800;font-size:14px}
-    .empty{padding:44px 20px;text-align:center;color:var(--hint)}.empty .e{font-size:44px;margin-bottom:10px}
+    .empty{padding:48px 20px;text-align:center;color:var(--hint)}.empty .e{margin-bottom:12px;color:var(--hint);opacity:.75;display:flex;justify-content:center}
     .empty .t{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}.empty .s{font-size:13px;margin-bottom:14px}
     /* toolbar, chips, inputs */
     .toolbar{position:sticky;top:62px;z-index:40;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(12px);
@@ -470,11 +470,11 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .hero.ok{background:rgba(46,213,115,.08);border-color:rgba(46,213,115,.2)}
     .hero.warn{background:rgba(255,165,2,.08);border-color:rgba(255,165,2,.25)}
     .hero.bad{background:rgba(255,71,87,.08);border-color:rgba(255,71,87,.25)}
-    .hero .e{font-size:38px}.hero .t{font-size:17px;font-weight:800;margin-top:6px}.hero .s{font-size:13px;color:var(--hint);margin-top:4px}
+    .hero .e{color:var(--hint);display:flex;justify-content:center}.hero .t{font-size:17px;font-weight:800;margin-top:8px}.hero .s{font-size:13px;color:var(--hint);margin-top:4px}
     .plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
     .plan{cursor:pointer;position:relative;text-align:center;padding:18px 10px;border-radius:var(--r);border:2px solid var(--sep);background:var(--card)}
     .plan.sel{border-color:var(--btn);background:rgba(108,92,231,.07)}
-    .plan .e{font-size:26px}.plan .n{font-size:14px;font-weight:700;margin-top:4px}.plan .p{font-size:20px;font-weight:800;margin:6px 0 2px}
+    .plan .e{color:var(--hint);display:flex;justify-content:center}.plan .n{font-size:14px;font-weight:700;margin-top:6px}.plan .p{font-size:20px;font-weight:800;margin:6px 0 2px}
     .plan .p small{font-size:11px;color:var(--hint);font-weight:500}.plan .d{font-size:11px;color:var(--hint);line-height:1.4}
     .plan .bv{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--btn);color:var(--btn-tx);font-size:10px;
       font-weight:800;padding:2px 10px;border-radius:12px;white-space:nowrap}
@@ -491,7 +491,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
       opacity:0;pointer-events:none;transition:.3s;max-width:calc(100vw - 40px);text-align:center}
     .toast.show{transform:translateX(-50%);opacity:1}.toast.err{border-color:rgba(255,71,87,.4)}.toast.ok{border-color:rgba(46,213,115,.4)}
     .loader{position:fixed;top:0;left:0;right:0;height:3px;z-index:400;display:none;background:transparent}
-    .loader.on{display:block}.loader::after{content:'';position:absolute;height:100%;width:35%;background:var(--grad);border-radius:2px;animation:ld 1s ease-in-out infinite}
+    .loader.on{display:block}.loader::after{content:'';position:absolute;height:100%;width:35%;background:var(--btn);border-radius:2px;animation:ld 1s ease-in-out infinite}
     @keyframes ld{0%{left:-35%}100%{left:100%}}
     .sess{padding:60px 24px;text-align:center}.sess .e{font-size:52px}.sess h2{font-size:18px;margin:12px 0 6px}.sess p{font-size:14px;color:var(--hint);margin-bottom:16px}
     .tl{margin:6px 0 4px}.tl .stp{display:flex;gap:10px}.tl .bar{display:flex;flex-direction:column;align-items:center}
@@ -500,6 +500,10 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .tl .ln{width:2px;flex:1;background:var(--sep);min-height:14px;margin:2px 0}.tl .stp.done .ln{background:var(--ok)}
     .tl .tt{font-size:13px;font-weight:600;padding-bottom:14px}.tl .tt small{display:block;font-weight:400;color:var(--hint);font-size:11px}
     .foot{text-align:center;font-size:11px;color:var(--hint);padding:18px 0 6px}
+    .fab:not([hidden]){display:flex;align-items:center;justify-content:center}
+    .qa .e,.ni .e{display:flex;align-items:center;justify-content:center}
+    .stat .ic{color:var(--hint)}
+    .tone .e{font-size:20px}
   </style>
 </head>
 <body>
@@ -511,12 +515,12 @@ BIZ_HTML = r"""<!DOCTYPE html>
   <div class="ava" id="ava">A</div>
   <div class="t-id"><h1 id="bizName">Ardi Business</h1><p><span class="dot" id="aiDot"></span><span id="bizSub">Connecting…</span></p></div>
   <button class="icon-btn" id="langBtn" onclick="toggleLang()" title="Language">EN</button>
-  <button class="icon-btn" id="shareBtn" onclick="openShare()" title="Share">↗</button>
+  <button class="icon-btn" id="shareBtn" onclick="openShare()" title="Share"><span data-ic="share" data-sz="18"></span></button>
 </div></header>
-<div class="planbar" id="planBar" hidden><div class="planbar-in warn" id="planBarIn" onclick="go('plan')"><span>⏳</span><span id="planBarTx"></span></div></div>
+<div class="planbar" id="planBar" hidden><div class="planbar-in warn" id="planBarIn" onclick="go('plan')"><span data-ic="clock" data-sz="15"></span><span id="planBarTx"></span></div></div>
 
 <div class="wrap">
-<div id="sess" class="sess" hidden><div class="e">🔐</div><h2 data-i="sess_t">Session expired</h2>
+<div id="sess" class="sess" hidden><div class="e" data-ic="lock" data-sz="52"></div><h2 data-i="sess_t">Session expired</h2>
 <p data-i="sess_s">Reopen this app from the Ardi bot to continue.</p>
 <button class="btn b-p" style="max-width:240px;margin:0 auto" onclick="location.reload()" data-i="retry">Retry</button></div>
 
@@ -526,10 +530,10 @@ BIZ_HTML = r"""<!DOCTYPE html>
   <div class="grid2" id="stats"></div>
   <div class="sec-t" data-i="quick">Quick actions</div>
   <div class="qa">
-    <button onclick="openProductSheet()"><span class="e">➕</span><span data-i="qa_add">Add</span></button>
-    <button onclick="go('orders')"><span class="e">🧾</span><span data-i="qa_orders">Orders</span><span class="bdg" id="pendBdg" hidden></span></button>
-    <button onclick="quickAi()"><span class="e">🤖</span><span data-i="qa_ai">AI</span></button>
-    <button onclick="openShare()"><span class="e">🔗</span><span data-i="qa_share">Share</span></button>
+    <button onclick="openProductSheet()"><span class="e" data-ic="plus"></span><span data-i="qa_add">Add</span></button>
+    <button onclick="go('orders')"><span class="e" data-ic="receipt"></span><span data-i="qa_orders">Orders</span><span class="bdg" id="pendBdg" hidden></span></button>
+    <button onclick="quickAi()"><span class="e" data-ic="bot"></span><span data-i="qa_ai">AI</span></button>
+    <button onclick="openShare()"><span class="e" data-ic="share"></span><span data-i="qa_share">Share</span></button>
   </div>
   <div class="sec-t"><span data-i="recent">Recent orders</span><span style="flex:1"></span>
     <a style="font-size:12px;color:var(--link);cursor:pointer;text-transform:none;letter-spacing:0" onclick="go('orders')" data-i="view_all">View all →</a></div>
@@ -570,7 +574,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
     <div class="card" style="padding:6px 16px" id="payAccts"></div>
     <div class="sec-t" data-i="receipt">Payment receipt</div>
     <div class="card"><div class="up-zone" id="upZone" onclick="document.getElementById('recFile').click()">
-        <div id="upInner"><div style="font-size:34px">🧾</div><div style="font-size:14px;font-weight:600" data-i="up_t">Tap to upload screenshot</div>
+        <div id="upInner"><div style="color:var(--hint)" data-ic="receipt" data-sz="34"></div><div style="font-size:14px;font-weight:600" data-i="up_t">Tap to upload screenshot</div>
         <div style="font-size:11px;color:var(--hint)">PNG · JPG · WEBP</div></div></div>
       <input type="file" id="recFile" accept="image/png,image/jpeg,image/webp" hidden onchange="recChosen(this)">
       <button class="btn b-p" id="recBtn" onclick="recSubmit()" disabled data-i="submit_receipt">Submit payment proof</button>
@@ -622,14 +626,14 @@ BIZ_HTML = r"""<!DOCTYPE html>
 </div><!-- /wrap -->
 
 <nav class="nav"><div class="nav-in" id="navIn">
-  <button class="ni on" data-t="home" onclick="go('home')"><span class="e">🏠</span><span data-i="tab_home">Home</span></button>
-  <button class="ni" data-t="catalog" onclick="go('catalog')"><span class="e">🛍️</span><span data-i="tab_cat">Catalog</span></button>
-  <button class="ni" data-t="orders" onclick="go('orders')"><span class="e">🧾</span><span data-i="tab_ord">Orders</span><span class="bdg" id="navBdg" hidden></span></button>
-  <button class="ni" data-t="plan" onclick="go('plan')"><span class="e">💳</span><span data-i="tab_plan">Plan</span></button>
-  <button class="ni" data-t="more" onclick="go('more')"><span class="e">⋯</span><span data-i="tab_more">More</span></button>
+  <button class="ni on" data-t="home" onclick="go('home')"><span class="e" data-ic="home" data-sz="23"></span><span data-i="tab_home">Home</span></button>
+  <button class="ni" data-t="catalog" onclick="go('catalog')"><span class="e" data-ic="grid" data-sz="23"></span><span data-i="tab_cat">Catalog</span></button>
+  <button class="ni" data-t="orders" onclick="go('orders')"><span class="e" data-ic="receipt" data-sz="23"></span><span data-i="tab_ord">Orders</span><span class="bdg" id="navBdg" hidden></span></button>
+  <button class="ni" data-t="plan" onclick="go('plan')"><span class="e" data-ic="card" data-sz="23"></span><span data-i="tab_plan">Plan</span></button>
+  <button class="ni" data-t="more" onclick="go('more')"><span class="e" data-ic="dots" data-sz="23"></span><span data-i="tab_more">More</span></button>
 </div></nav>
 
-<button class="fab" id="fab" onclick="openProductSheet()" hidden>＋</button>
+<button class="fab" id="fab" onclick="openProductSheet()" hidden><span data-ic="plus" data-sz="26"></span></button>
 
 <div class="ov" id="ov" onclick="closeSheet()"></div>
 <div class="sheet" id="sheet"><div class="sheet-in" id="sheetIn"></div></div>
@@ -678,7 +682,7 @@ confirm:'Confirm',complete:'Complete',cancel_o:'Cancel order',st_pending:'Pendin
 ai_on:'AI replies to customers automatically',ai_off:'AI is off — you reply manually',trial:'Trial',active:'Active',awaiting:'Awaiting payment',expired:'Expired',suspended:'Suspended',
 days_left:'days left',choose_plan:'Choose a plan',monthly:'Monthly',yearly:'Yearly',per_mo:'/mo',best:'Best value',mo_desc:'Billed monthly · cancel anytime',yr_desc:'2 months free · best for growing stores',
 cur_monthly:'Monthly plan active',cur_yearly:'Yearly plan active',await_t:'Payment sent — waiting for admin confirmation.',exp_t:'Subscribe to keep selling with Ardi AI.',
-sub_now:'Subscribe now',proceed:'Proceed with this plan?',plan_ok:'Plan selected — send payment below',copy:'Copy link',open:'Open in Telegram',copied:'Link copied ✓',
+sub_now:'Subscribe now',proceed:'Proceed with this plan?',plan_ok:'Plan selected — send payment below',pay_chapa:'Pay instantly with Chapa',chapa_pending:'Complete payment in Chapa',chapa_hint:'Pay with Telebirr, CBE or card, then come back and verify.',chapa_verify:"I've paid — verify",chapa_opened:'Chapa checkout opened',chapa_nopay:'Start a Chapa payment first',copy:'Copy link',open:'Open in Telegram',copied:'Link copied ✓',
 shr_t:'Your store link',shr_s:'Share it anywhere — customers chat & order automatically.',prof_ok:'Profile saved ✓',set_ok:'Saved ✓',ai_on_t:'AI is ON 🤖',ai_off_t:'AI is OFF ⏸️',
 tone_ok:'Tone saved ✓',hrs_ok:'Hours saved ✓',off_ok:'Message saved ✓',bank_ok:'Payment info saved ✓',ord_ok:'Order updated ✓',prod_ok:'Product saved ✓',prod_del:'Product deleted 🗑️',
 rec_ok:'Receipt submitted! Admin will verify. 📩',sel_img:'Choose an image first',enter_name:'Enter a name (2+ letters)',enter_price:'Enter a valid price',
@@ -700,7 +704,7 @@ confirm:'አጽድቅ',complete:'አጠናቅቅ',cancel_o:'ትዕዛዙን ሰ�
 ai_on:'AI ለደንበኞች በራስ-ሰር ይመልሳል',ai_off:'AI ጠፍቷል — እርስዎ በእጅ ይመልሳሉ',trial:'ሙከራ',active:'ንቁ',awaiting:'ክፍያ በመጠባበቅ ላይ',expired:'ጊዜው አልፎበታል',suspended:'ታግዷል',
 days_left:'ቀናት ቀርተዋል',choose_plan:'እቅድ ይምረጡ',monthly:'ወርሃዊ',yearly:'ዓመታዊ',per_mo:'/ወር',best:'ምርጥ ምርጫ',mo_desc:'በየወሩ ክፍያ · በማንኛውም ጊዜ ይሰርዙ',yr_desc:'2 ወር ነፃ · ለሚያድጉ ሱቆች',
 cur_monthly:'ወርሃዊ እቅድ ንቁ ነው',cur_yearly:'ዓመታዊ እቅድ ንቁ ነው',await_t:'ክፍያ ተልኳል — የአድሚን ማረጋገጫ በመጠባበቅ ላይ።',exp_t:'ከArdi AI ጋር ለመሸጥ ይመዝገቡ።',
-sub_now:'አሁን ይመዝገቡ',proceed:'በዚህ እቅድ ይቀጥሉ?',plan_ok:'እቅድ ተመርጧል — ክፍያ ከዚህ በታች ይላኩ',copy:'ሊንኩን ቅዳ',open:'በቴሌግራም ክፈት',copied:'ሊንኩ ተቀድቷል ✓',
+sub_now:'አሁን ይመዝገቡ',proceed:'በዚህ እቅድ ይቀጥሉ?',plan_ok:'እቅድ ተመርጧል — ክፍያ ከዚህ በታች ይላኩ',pay_chapa:'በChapa በአፋጣኝ ይክፈሉ',chapa_pending:'ክፍያዎን በChapa ያጠናቅቁ',chapa_hint:'በቴሌብር፣ CBE ወይም ካርድ ይክፈሉ፣ ከዚያ ተመልሰው ያረጋግጡ።',chapa_verify:'ከፍያለሁ — ያረጋግጡ',chapa_opened:'የChapa ክፍያ ተከፍቷል',chapa_nopay:'መጀመሪያ የChapa ክፍያ ይጀምሩ',copy:'ሊንኩን ቅዳ',open:'በቴሌግራም ክፈት',copied:'ሊንኩ ተቀድቷል ✓',
 shr_t:'የሱቅዎ ሊንክ',shr_s:'የትም ቦታ ያጋሩ — ደንበኞች በራስ-ሰር ያዣሉ።',prof_ok:'መገለጫ ተቀምጧል ✓',set_ok:'ተቀምጧል ✓',ai_on_t:'AI በርቷል 🤖',ai_off_t:'AI ጠፍቷል ⏸️',
 tone_ok:'ዘይቤ ተቀምጧል ✓',hrs_ok:'ሰዓት ተቀምጧል ✓',off_ok:'መልእክት ተቀምጧል ✓',bank_ok:'የክፍያ መረጃ ተቀምጧል ✓',ord_ok:'ትዕዛዝ ታድሷል ✓',prod_ok:'ምርት ተቀምጧል ✓',prod_del:'ምርት ተሰርዟል 🗑️',
 rec_ok:'ደረሰኝ ተልኳል! አድሚን ያረጋግጣል። 📩',sel_img:'መጀመሪያ ምስል ይምረጡ',enter_name:'ስም ያስገቡ (2+ ፊደላት)',enter_price:'ትክክለኛ ዋጋ ያስገቡ',
@@ -727,10 +731,37 @@ function toggleBox(id){ const e=$(id); e.hidden=!e.hidden; }
 const S={dash:null,products:[],orders:[],sub:null,settings:null,profile:null,stockF:'all',ordF:'all',photoB64:null,recB64:null,planSel:null,pend:0};
 const fmtN=n=>'ETB '+(+n||0).toLocaleString();
 function ago(iso){ if(!iso)return''; const s=(Date.now()-new Date(iso))/1e3; if(s<60)return'· now'; if(s<3600)return'· '+Math.floor(s/60)+'m'; if(s<86400)return'· '+Math.floor(s/3600)+'h'; return'· '+Math.floor(s/86400)+'d'; }
+/* ── icon system: 1.8px stroke SVGs, currentColor ── */
+const IC={
+home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/>',
+grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+receipt:'<path d="M5 3h14v18l-2.3-1.5L14.4 21l-2.4-1.5L9.6 21l-2.3-1.5L5 21z"/><path d="M9 8h6M9 12h6"/>',
+card:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
+dots:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+plus:'<path d="M12 5v14M5 12h14"/>',
+box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
+check:'<path d="M4 12.5l5 5L20 6.5"/>',
+checkc:'<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+x:'<path d="M6 6l12 12M18 6L6 18"/>',
+lock:'<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+share:'<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
+cal:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+spark:'<path d="M12 3l1.8 5.7L19.5 10l-5.7 1.8L12 17.5l-1.8-5.7L4.5 10l5.7-1.3z"/>',
+chat:'<path d="M4 5h16v11H9l-5 4z"/>',
+bot:'<rect x="5" y="9" width="14" height="11" rx="2"/><path d="M12 9V5M9 5h6"/><circle cx="9.5" cy="14" r="1"/><circle cx="14.5" cy="14" r="1"/>',
+tag:'<path d="M3 12V4h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/>',
+inbox:'<path d="M3 13l2.5-8h13L21 13v6H3z"/><path d="M3 13h6l1.5 2h3L15 13h6"/>',
+user:'<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+store:'<path d="M4 9l1-5h14l1 5"/><path d="M4 9h16v11H4z"/><path d="M9 20v-6h6v6"/>',
+chart:'<path d="M5 20v-6M11 20V6M17 20v-9"/>'};
+function ic(n,s){s=s||22;return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[n]||IC.box}</svg>`}
+function paintIcons(root){(root||document).querySelectorAll('[data-ic]').forEach(el=>{el.innerHTML=ic(el.dataset.ic,+(el.dataset.sz||22))})}
+function imgFb(el,icn){const d=document.createElement('div');d.className='im ph';d.innerHTML=ic(icn||'box',22);el.replaceWith(d)}
 function pill(st){ const m={pending:['p-brand',t('st_pending')],confirmed:['p-ok',t('st_confirmed')],completed:['p-ok',t('st_completed')],cancelled:['p-bad',t('st_cancelled')],active:['p-ok',t('active')],trial:['p-warn',t('trial')],awaiting_payment:['p-warn',t('awaiting')],expired:['p-bad',t('expired')],suspended:['p-bad',t('suspended')]}; const v=m[st]||['p-brand',st]; return `<span class="pill ${v[0]}">${esc(v[1])}</span>`; }
 function skel(n){ return Array(n).fill('<div class="card"><div class="skl" style="height:16px;width:60%;margin-bottom:8px">x</div><div class="skl" style="height:12px;width:90%">x</div></div>').join(''); }
-function empty(e,ti,s,btn,fn){ return `<div class="empty"><div class="e">${e}</div><div class="t">${ti}</div><div class="s">${s}</div>${btn?`<button class="btn b-p" style="max-width:220px;margin:0 auto" onclick="${fn}">${btn}</button>`:''}</div>`; }
-function renderAll(){ applyI18n(); go(TAB); }
+function empty(icn,ti,s,btn,fn){ return `<div class="empty"><div class="e">${ic(icn,46)}</div><div class="t">${ti}</div><div class="s">${s}</div>${btn?`<button class="btn b-p" style="max-width:220px;margin:0 auto" onclick="${fn}">${btn}</button>`:''}</div>`; }
+function renderAll(){ applyI18n(); paintIcons(); go(TAB); }
 function confirmDlg(msg,fn){ if(tg?.showConfirm){tg.showConfirm(msg,ok=>{if(ok)fn()})} else if(confirm(msg))fn(); }
 
 /* ── HOME ── */
@@ -744,12 +775,12 @@ async function loadHome(){
   $('bizSub').textContent=(d.subscription_status||'trial')+(d.recent_orders?.length?'':' · '+t('no_ord'));
   $('aiDot').className='dot'+(ai===false?' off':'');
   $('stats').innerHTML=[
-    {e:'🛍️',v:d.product_count??0,l:t('products')},{e:'🧾',v:d.order_count??0,l:t('orders')},
-    {e:'💰',v:fmtN(d.revenue),l:t('revenue')},{e:'⏳',v:d.subscription_status||'—',l:t('plan')}
-  ].map(s=>`<div class="stat"><div class="ic" style="background:var(--sec)">${s.e}</div><div class="v" style="font-size:${String(s.v).length>8?'16px':'21px'}">${esc(String(s.v))}</div><div class="l">${esc(s.l)}</div></div>`).join('');
+    {i:'grid',v:d.product_count??0,l:t('products')},{i:'receipt',v:d.order_count??0,l:t('orders')},
+    {i:'chart',v:fmtN(d.revenue),l:t('revenue')},{i:'card',v:d.subscription_status||'—',l:t('plan')}
+  ].map(s=>`<div class="stat"><div class="ic" style="background:var(--sec);color:var(--hint)">${ic(s.i,18)}</div><div class="v" style="font-size:${String(s.v).length>8?'16px':'21px'}">${esc(String(s.v))}</div><div class="l">${esc(s.l)}</div></div>`).join('');
   const ro=d.recent_orders||[];
-  $('recent').innerHTML=ro.length?ro.map(o=>`<div class="row" onclick="openOrder(${o.id})"><div class="im ph">🧾</div><div class="tx"><div class="t1">${esc(o.customer_name||t('customer'))}</div><div class="t2">${ago(o.created_at)}</div></div><div class="rt"><div class="amt">${fmtN(o.total_price)}</div><div style="margin-top:4px">${pill(o.status)}</div></div></div>`).join('')
-    :empty('📭',t('no_ord'),t('no_ord_s'));
+  $('recent').innerHTML=ro.length?ro.map(o=>`<div class="row" onclick="openOrder(${o.id})"><div class="im ph">${ic('receipt',22)}</div><div class="tx"><div class="t1">${esc(o.customer_name||t('customer'))}</div><div class="t2">${ago(o.created_at)}</div></div><div class="rt"><div class="amt">${fmtN(o.total_price)}</div><div style="margin-top:4px">${pill(o.status)}</div></div></div>`).join('')
+    :empty('inbox',t('no_ord'),t('no_ord_s'));
   refreshPlanBar(d.subscription_status); refreshBadge();
 }
 async function refreshBadge(){
@@ -784,15 +815,15 @@ function renderProducts(){
   $('prodCount').textContent=`${items.length} / ${S.products.length} · ${t('products')}`;
   $('plist').innerHTML=items.length?items.map(p=>`
     <div class="card" style="padding:8px 14px"><div class="row" style="border:none;padding:8px 0" onclick="openProductSheet(${p.id})">
-    ${p.photo_url?`<img class="im" src="${esc(p.photo_url)}" loading="lazy" onerror="this.outerHTML='<div class=&quot;im ph&quot;>📦</div>'">`:'<div class="im ph">📦</div>'}
+    ${p.photo_url?`<img class="im" src="${esc(p.photo_url)}" loading="lazy" onerror="imgFb(this)">`:`<div class="im ph">${ic('box',22)}</div>`}
     <div class="tx"><div class="t1">${esc(p.name)}</div><div class="t2">${p.available?t('in_stock'):t('out')}</div></div>
     <div class="rt"><div class="amt">${fmtN(p.price)}</div></div></div></div>`).join('')
-    :empty('📦',t('no_prod'),t('no_prod_s'),t('add_first'),'openProductSheet()');
+    :empty('box',t('no_prod'),t('no_prod_s'),t('add_first'),'openProductSheet()');
 }
 function openProductSheet(id){
   const p=id?S.products.find(x=>x.id===id):null; S.editId=id||null; S.photoB64=null;
   openSheet(`<div class="grab"></div><h2>${p?esc(p.name):t('add_p')}</h2>
-  <div class="photo-pick"><div id="ppPrev">${p?.photo_url?`<img src="${esc(p.photo_url)}" style="width:72px;height:72px;border-radius:14px;object-fit:cover">`:'<div class="ph">📷</div>'}</div>
+  <div class="photo-pick"><div id="ppPrev">${p?.photo_url?`<img src="${esc(p.photo_url)}" style="width:72px;height:72px;border-radius:14px;object-fit:cover">`:`<div class="ph">${ic('plus',26)}</div>`}</div>
   <div><div style="font-size:13px;font-weight:700">${t('photo')}</div>
   <button class="btn b-s" style="width:auto;padding:8px 14px;font-size:13px;margin:6px 0 0" onclick="document.getElementById('ppFile').click()">${t('change')}</button>
   <input type="file" id="ppFile" accept="image/png,image/jpeg,image/webp" hidden onchange="photoPick(this)"></div></div>
@@ -838,10 +869,10 @@ async function fetchOrders(){
   S.orders=d.orders||[]; $('ordCount').textContent=`${S.orders.length} · ${t('orders')}`;
   $('olist').innerHTML=S.orders.length?S.orders.map(o=>`
     <div class="card" style="padding:6px 16px"><div class="row" style="border:none" onclick="openOrder(${o.id})">
-    <div class="im ph">🧾</div><div class="tx"><div class="t1">#${o.id} · ${esc(o.customer_name||t('customer'))}</div>
+    <div class="im ph">${ic('receipt',22)}</div><div class="tx"><div class="t1">#${o.id} · ${esc(o.customer_name||t('customer'))}</div>
     <div class="t2">${o.item_count||0} ${t('items')} ${ago(o.created_at)}</div></div>
     <div class="rt"><div class="amt">${fmtN(o.total_price)}</div><div style="margin-top:4px">${pill(o.status)}</div></div></div></div>`).join('')
-    :empty('🧾',t('no_ord'),t('no_ord_s'));
+    :empty('receipt',t('no_ord'),t('no_ord_s'));
 }
 function setOrd(f,el){ S.ordF=f; document.querySelectorAll('#ordChips .chip').forEach(c=>c.classList.toggle('on',c===el)); fetchOrders(); }
 async function openOrder(id){
@@ -877,16 +908,16 @@ async function setOrdStatus(id,st){
 }
 
 /* ── PLAN ── */
-const PLANS=[{id:'monthly',e:'📆',p:1200},{id:'yearly',e:'📅',p:12000}];
+const PLANS=[{id:'monthly',e:'cal',p:1200},{id:'yearly',e:'spark',p:12000}];
 async function loadPlan(){
   $('planHero').innerHTML=skel(1); $('planPick').innerHTML=''; $('planPay').hidden=true;
   const d=await api('/api/business/subscription'); if(!d)return; S.sub=d;
   const st=d.status||'trial', days=d.days_left||0;
   const cls=st==='active'?'ok':(st==='expired'||st==='suspended')?'bad':'warn';
-  const icon=st==='active'?'✅':st==='trial'?'⏳':st==='awaiting_payment'?'📩':'🔒';
+  const icon=st==='active'?'checkc':st==='trial'?'clock':st==='awaiting_payment'?'inbox':'lock';
   const title=st==='active'?(d.plan==='yearly'?t('cur_yearly'):t('cur_monthly')):t(st==='awaiting_payment'?'awaiting':st);
   const sub=st==='active'&&days>0?`${days} ${t('days_left')}`:st==='trial'&&days>0?`${days} ${t('days_left')}`:t(st==='awaiting_payment'?'await_t':'exp_t');
-  $('planHero').innerHTML=`<div class="hero ${cls}"><div class="e">${icon}</div><div class="t">${esc(title)}</div><div class="s">${esc(sub)}</div></div>`;
+  $('planHero').innerHTML=`<div class="hero ${cls}"><div class="e">${ic(icon,38)}</div><div class="t">${esc(title)}</div><div class="s">${esc(sub)}</div></div>`;
   $('planSum').textContent=title;
   if(st==='active'){ $('planPick').innerHTML=''; return; }
   if(st==='awaiting_payment'){
@@ -896,13 +927,27 @@ async function loadPlan(){
   S.planSel=d.selected||null;
   $('planPick').innerHTML=`<div class="sec-t">${t('choose_plan')}</div><div class="plans">${PLANS.map(p=>`
     <div class="plan ${S.planSel===p.id?'sel':''}" onclick="selPlan('${p.id}')">${p.id==='yearly'?`<div class="bv">${t('best')}</div>`:''}
-    <div class="e">${p.e}</div><div class="n">${t(p.id)}</div><div class="p">${p.p.toLocaleString()}<small> ETB${t('per_mo')}</small></div>
+    <div class="e">${ic(p.e,26)}</div><div class="n">${t(p.id)}</div><div class="p">${p.p.toLocaleString()}<small> ETB${t('per_mo')}</small></div>
     <div class="d">${t(p.id==='yearly'?'yr_desc':'mo_desc')}</div></div>`).join('')}</div>
     <div id="planCta"></div>`;
-  if(S.planSel){ $('planCta').innerHTML=`<button class="btn b-p" onclick="selPlan('${S.planSel}')">${t('sub_now')}</button>`; renderPay(d.payment_methods||[]); }
+  if(S.planSel){ $('planCta').innerHTML=`<button class="btn b-p" onclick="selPlan('${S.planSel}')">${t('sub_now')}</button><button class="btn b-s" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`; renderPay(d.payment_methods||[]); }
+}
+async function chapaPay(){
+  const plan=S.planSel||'monthly';
+  const d=await api('/api/business/subscription/chapa-pay',{method:'POST',body:JSON.stringify({plan})});
+  if(!d||!d.checkout_url)return;
+  S.chapaTx=d.tx_ref;
+  try{ tg?.openLink(d.checkout_url); }catch(e){ window.open(d.checkout_url,'_blank'); }
+  $('chapaBox').innerHTML=`<div class="card" style="text-align:center;margin-top:10px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">${t('chapa_pending')}</div><div style="font-size:12px;color:var(--hint);margin-bottom:12px">${t('chapa_hint')}</div><button class="btn b-p" onclick="chapaVerify()">${t('chapa_verify')}</button></div>`;
+  toast(t('chapa_opened'),'ok');
+}
+async function chapaVerify(){
+  if(!S.chapaTx){toast(t('chapa_nopay'),'err');return}
+  const d=await api('/api/business/subscription/chapa-verify',{method:'POST',body:JSON.stringify({tx_ref:S.chapaTx})});
+  if(d&&d.success){toast(t('rec_ok'),'ok');hap();S.chapaTx=null;loadPlan()}
 }
 async function selPlan(plan){
-  confirmDlg((plan==='yearly'?'📅 Yearly · 12,000 ETB':'📆 Monthly · 1,200 ETB')+' — '+t('proceed'),async()=>{
+  confirmDlg((plan==='yearly'?'Yearly · 12,000 ETB':'Monthly · 1,200 ETB')+' — '+t('proceed'),async()=>{
     const d=await api('/api/business/subscription/select-plan',{method:'POST',body:JSON.stringify({plan})});
     if(d&&d.success){toast(t('plan_ok'),'ok');hap();loadPlan()}
   });
@@ -981,7 +1026,7 @@ async function openShare(){
 function copyLink(){ const l=S.shareLink||''; (navigator.clipboard?navigator.clipboard.writeText(l):Promise.reject()).then(()=>toast(t('copied'),'ok')).catch(()=>{try{tg?.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(l))}catch(e){toast(l)}}); }
 
 /* ── boot ── */
-applyI18n(); loadHome();
+applyI18n(); paintIcons(); loadHome();
 </script>
 </body>
 </html>"""
@@ -1670,6 +1715,160 @@ async def biz_select_plan(request: Request):
         return {"success": True}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/api/business/subscription/chapa-pay")
+async def biz_chapa_pay(request: Request):
+    """Create a Chapa checkout for the owner's plan. Returns {checkout_url, tx_ref}."""
+    biz_data = await _require_business(request)
+    b = biz_data["business"]
+    try:
+        import chapa
+        from chapa import plan_amount
+        if not chapa.chapa_configured():
+            raise HTTPException(status_code=503, detail="Chapa payments not configured")
+        body = await request.json()
+        plan = body.get("plan") or b.subscription_plan or "monthly"
+        if plan not in ("monthly", "yearly"):
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        from db.database import async_session
+        from db.models import Business, SubscriptionPayment
+        from decimal import Decimal
+
+        base = str(request.base_url).rstrip("/")
+        async with async_session() as s:
+            bb = await s.get(Business, b.id)
+            bb.subscription_plan = plan
+            bb.subscription_status = "awaiting_payment"
+            co = await chapa.create_checkout(
+                bb, plan,
+                return_url=f"{base}/business",
+                callback_url=f"{base}/api/chapa/webhook",
+            )
+            if not co:
+                raise HTTPException(status_code=502, detail="Could not start Chapa checkout")
+            pay = SubscriptionPayment(
+                business_id=bb.id, plan=plan,
+                amount=Decimal(plan_amount(plan)),
+                tx_ref=co["tx_ref"], checkout_url=co["checkout_url"],
+            )
+            s.add(pay)
+            await s.commit()
+            return {"success": True, "checkout_url": co["checkout_url"], "tx_ref": co["tx_ref"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _settle_chapa_payment(tx_ref: str) -> dict:
+    """Verify a Chapa tx server-side; activate subscription once. Idempotent."""
+    import chapa
+    from db.database import async_session
+    from db.models import Business, SubscriptionPayment
+    import datetime
+
+    async with async_session() as s:
+        from sqlalchemy import select
+        row = (await s.execute(
+            select(SubscriptionPayment).where(SubscriptionPayment.tx_ref == tx_ref)
+        )).scalar_one_or_none()
+        if not row:
+            return {"paid": False, "reason": "unknown reference"}
+        if row.status == "paid":
+            return {"paid": True, "already": True}
+        verdict = await chapa.verify_payment(tx_ref)
+        if not verdict.get("paid"):
+            row.status = "failed"
+            await s.commit()
+            return {"paid": False}
+        try:
+            paid_amount = float(verdict.get("amount") or 0)
+        except (ValueError, TypeError):
+            paid_amount = 0.0
+        if paid_amount + 1.0 < float(row.amount):
+            row.status = "failed"
+            await s.commit()
+            return {"paid": False, "reason": "amount mismatch"}
+        b = await s.get(Business, row.business_id)
+        if not b:
+            return {"paid": False, "reason": "business gone"}
+        now = datetime.datetime.now(datetime.timezone.utc)
+        b.subscription_status = "active"
+        b.subscription_plan = row.plan
+        b.subscription_end = now + datetime.timedelta(days=365 if row.plan == "yearly" else 30)
+        row.status = "paid"
+        row.chapa_ref = (verdict.get("chapa_ref") or "")[:100]
+        await s.commit()
+        return {"paid": True, "business_id": b.id, "plan": row.plan,
+                "chat_id": b.telegram_chat_id, "name": b.name}
+
+
+@app.post("/api/business/subscription/chapa-verify")
+async def biz_chapa_verify(request: Request):
+    """Owner tapped 'I've paid' — re-verify server-side (covers missed webhooks)."""
+    biz_data = await _require_business(request)
+    b = biz_data["business"]
+    try:
+        body = await request.json()
+        tx_ref = (body.get("tx_ref") or "").strip()
+        if not tx_ref:
+            raise HTTPException(status_code=400, detail="Missing tx_ref")
+        from db.database import async_session
+        from db.models import SubscriptionPayment
+        from sqlalchemy import select
+        async with async_session() as s:
+            row = (await s.execute(
+                select(SubscriptionPayment).where(SubscriptionPayment.tx_ref == tx_ref)
+            )).scalar_one_or_none()
+            if not row or row.business_id != b.id:
+                raise HTTPException(status_code=404, detail="Payment not found")
+        result = await _settle_chapa_payment(tx_ref)
+        if result.get("paid"):
+            return {"success": True, "already": result.get("already", False)}
+        raise HTTPException(status_code=402, detail="Payment not confirmed yet")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.api_route("/api/chapa/webhook", methods=["GET", "POST"])
+async def chapa_webhook(request: Request):
+    """Chapa server callback. Always 200 (never leak state); verifies server-side."""
+    tx_ref = ""
+    try:
+        if request.method == "POST":
+            try:
+                body = await request.json()
+                tx_ref = (body.get("tx_ref") or body.get("trx_ref") or "").strip()
+            except Exception:
+                form = await request.form()
+                tx_ref = (form.get("tx_ref") or form.get("trx_ref") or "").strip()
+        else:
+            tx_ref = (request.query_params.get("tx_ref") or request.query_params.get("trx_ref") or "").strip()
+    except Exception:
+        tx_ref = ""
+    if tx_ref:
+        try:
+            result = await _settle_chapa_payment(tx_ref)
+            if result.get("paid") and not result.get("already"):
+                try:
+                    from telegram import Bot
+                    from config import TELEGRAM_TOKEN
+                    bot = Bot(TELEGRAM_TOKEN)
+                    await bot.send_message(
+                        result["chat_id"],
+                        f"🎉 *Subscription Activated!*\n\n"
+                        f"Your *{result['plan'].capitalize()}* plan is now active. "
+                        f"Payment received via Chapa. Thank you!",
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return {"ok": True}
 
 
 @app.post("/api/business/subscription/upload-receipt")
