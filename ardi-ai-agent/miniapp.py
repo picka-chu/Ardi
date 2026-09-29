@@ -561,17 +561,6 @@ BIZ_HTML = r"""<!DOCTYPE html>
 <section class="pg" id="pg-plan">
   <div id="planHero"></div>
   <div id="planPick"></div>
-  <div id="planPay" hidden>
-    <div class="sec-t" data-i="pay_to">Send payment to</div>
-    <div class="card" style="padding:6px 16px" id="payAccts"></div>
-    <div class="sec-t" data-i="receipt">Payment receipt</div>
-    <div class="card"><div class="up-zone" id="upZone" onclick="document.getElementById('recFile').click()">
-        <div id="upInner"><div style="color:var(--hint)" data-ic="receipt" data-sz="34"></div><div style="font-size:14px;font-weight:600" data-i="up_t">Tap to upload screenshot</div>
-        <div style="font-size:11px;color:var(--hint)">PNG · JPG · WEBP</div></div></div>
-      <input type="file" id="recFile" accept="image/png,image/jpeg,image/webp" hidden onchange="recChosen(this)">
-      <button class="btn b-p" id="recBtn" onclick="recSubmit()" disabled data-i="submit_receipt">Submit payment proof</button>
-    </div>
-  </div>
 </section>
 
 <!-- MORE -->
@@ -902,7 +891,7 @@ async function setOrdStatus(id,st){
 /* ── PLAN ── */
 const PLANS=[{id:'monthly',e:'cal',p:1200},{id:'yearly',e:'spark',p:12000}];
 async function loadPlan(){
-  $('planHero').innerHTML=skel(1); $('planPick').innerHTML=''; $('planPay').hidden=true;
+  $('planHero').innerHTML=skel(1); $('planPick').innerHTML='';
   const d=await api('/api/business/subscription'); if(!d)return; S.sub=d;
   const st=d.status||'trial', days=d.days_left||0;
   const cls=st==='active'?'ok':(st==='expired'||st==='suspended')?'bad':'warn';
@@ -913,17 +902,19 @@ async function loadPlan(){
   $('planSum').textContent=title;
   if(st==='active'){ $('planPick').innerHTML=''; return; }
   if(st==='awaiting_payment'){
-    $('planPick').innerHTML=`<div class="card" style="text-align:center">${t('await_t')}</div>`;
-    S.planSel=d.plan||d.selected||'monthly'; renderPay(d.payment_methods||[]); return;
+    S.planSel=d.plan||d.selected||'monthly';
+    $('planPick').innerHTML=`<div class="card" style="text-align:center;margin-bottom:12px">${t('await_t')}</div><button class="btn b-p" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`;
+    return;
   }
   S.planSel=d.selected||null;
   $('planPick').innerHTML=`<div class="sec-t">${t('choose_plan')}</div><div class="plans">${PLANS.map(p=>`
-    <div class="plan ${S.planSel===p.id?'sel':''}" onclick="selPlan('${p.id}')">${p.id==='yearly'?`<div class="bv">${t('best')}</div>`:''}
+    <div class="plan ${S.planSel===p.id?'sel':''}" onclick="pickPlan('${p.id}')">${p.id==='yearly'?`<div class="bv">${t('best')}</div>`:''}
     <div class="e">${ic(p.e,26)}</div><div class="n">${t(p.id)}</div><div class="p">${p.p.toLocaleString()}<small> ETB${t('per_mo')}</small></div>
     <div class="d">${t(p.id==='yearly'?'yr_desc':'mo_desc')}</div></div>`).join('')}</div>
     <div id="planCta"></div>`;
-  if(S.planSel){ $('planCta').innerHTML=`<button class="btn b-p" onclick="selPlan('${S.planSel}')">${t('sub_now')}</button><button class="btn b-s" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`; renderPay(d.payment_methods||[]); }
+  if(S.planSel){ $('planCta').innerHTML=`<button class="btn b-p" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`; }
 }
+function pickPlan(plan){ S.planSel=plan; hap('light'); loadPlan(); }
 async function chapaPay(){
   const plan=S.planSel||'monthly';
   const d=await api('/api/business/subscription/chapa-pay',{method:'POST',body:JSON.stringify({plan})});
@@ -938,30 +929,6 @@ async function chapaVerify(){
   const d=await api('/api/business/subscription/chapa-verify',{method:'POST',body:JSON.stringify({tx_ref:S.chapaTx})});
   if(d&&d.success){toast(t('rec_ok'),'ok');hap();S.chapaTx=null;loadPlan()}
 }
-async function selPlan(plan){
-  confirmDlg((plan==='yearly'?'Yearly · 12,000 ETB':'Monthly · 1,200 ETB')+' — '+t('proceed'),async()=>{
-    const d=await api('/api/business/subscription/select-plan',{method:'POST',body:JSON.stringify({plan})});
-    if(d&&d.success){toast(t('plan_ok'),'ok');hap();loadPlan()}
-  });
-}
-function renderPay(methods){
-  if(!methods.length){$('planPay').hidden=true;return}
-  $('planPay').hidden=false;
-  $('payAccts').innerHTML=methods.map(m=>`<div class="pay-acct"><div class="n">${m.name==='cbe'?'🏦 CBE Birr':'📱 Telebirr'}</div>
-    <div class="kv"><span class="k">${t('acc_name')}</span><span class="v">${esc(m.account_name||'')}</span></div>
-    <div class="kv"><span class="k">${t('acc_no')}</span><span class="v">${esc(m.account_number||'')}</span></div></div>`).join('');
-}
-function recChosen(inp){
-  const f=inp.files[0]; if(!f){S.recB64=null;$('recBtn').disabled=true;$('upInner').innerHTML='';return}
-  compressImage(f).then(b=>{ S.recB64=b; $('recBtn').disabled=false;
-    $('upZone').classList.add('has'); $('upInner').innerHTML=`<img src="data:image/jpeg;base64,${b}"><div style="font-size:12px;color:var(--ok);font-weight:700">✓ ${esc(f.name)}</div>`; });
-}
-async function recSubmit(){
-  if(!S.recB64){toast(t('sel_img'),'err');return}
-  const d=await api('/api/business/subscription/upload-receipt',{method:'POST',body:JSON.stringify({photo_data:S.recB64})});
-  if(d&&d.success){toast(t('rec_ok'),'ok');hap();S.recB64=null;loadPlan()}
-}
-
 /* ── MORE: profile, AI, hours, bank ── */
 const TONES=[{id:'friendly',e:'😊'},{id:'professional',e:'🤵'},{id:'casual',e:'😎'},{id:'formal',e:'🎩'},{id:'witty',e:'😜'}];
 const TONE_NM={friendly:['Friendly','ተግባቢ'],professional:['Professional','ሙያዊ'],casual:['Casual','ቀላል'],formal:['Formal','ኦፊሴላዊ'],witty:['Witty','አስቂኝ']};

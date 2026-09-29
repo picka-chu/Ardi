@@ -809,7 +809,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     is_subscription = business and business.subscription_status == "awaiting_payment"
     if is_subscription:
-        await update.message.reply_text("Please send a photo of your payment receipt.")
+        await update.message.reply_text("Subscriptions are paid online with Chapa. Use /plans to get your checkout link.")
         return
 
     if context.user_data.get("customer_chat_active"):
@@ -3282,8 +3282,8 @@ SUBSCRIPTION_INFO = (
     "*Ardi AI — Subscription Plans*\n\n"
     f"• Monthly: *{SUBSCRIPTION_MONTHLY:,} ETB* ({TRIAL_DAYS}-day trial)\n"
     f"• Yearly: *{SUBSCRIPTION_YEARLY:,} ETB* (2 months free)\n\n"
-    "Payment: Telebirr / Bank Transfer\n"
-    "Contact admin after payment to activate."
+    "Payment: secure online checkout with Chapa (Telebirr, CBE, cards).\n"
+    "Your subscription activates automatically once paid."
 )
 
 
@@ -3379,21 +3379,12 @@ async def subscription_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(
         f"✅ *{plan.capitalize()} plan selected!*\n\n"
         f"Amount: *{amount:,} ETB*\n\n"
-        "*Send payment to one of these accounts:*\n\n" +
-        "\n\n".join(
-            f"{'🏦' if m.name=='cbe' else '📱'} *{m.bank_name or m.name.title()}*\n"
-            f"Name: {m.account_name}\n"
-            f"Account: `{m.account_number}`"
-            for m in await _get_payment_methods()
-        ) +
-        "\n\n*After paying, send a screenshot of the receipt here.*\n"
-        "I'll verify it automatically!",
+        "Pay securely with Chapa (Telebirr, CBE, cards).\n"
+        "Your subscription activates automatically once paid.",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            ([[InlineKeyboardButton("💳 Pay instantly with Chapa", callback_data=f"sub_chapa_{plan}")]]
-             if chapa.chapa_configured() else [])
-            + [[InlineKeyboardButton("📩 Notify Admin I've Paid", callback_data=f"sub_paid_{biz_id}_{plan}")]],
-        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"💳 Pay {amount:,} ETB with Chapa", callback_data=f"sub_chapa_{plan}")],
+        ]),
     )
 
 
@@ -3406,7 +3397,7 @@ async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("Invalid plan.")
         return
     if not chapa.chapa_configured():
-        await query.edit_message_text("Card payments are not available right now. Please use bank transfer.")
+        await query.edit_message_text("Online payments are temporarily unavailable. Please try again later or contact support.")
         return
 
     chat_id = update.effective_chat.id
@@ -3428,7 +3419,7 @@ async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         callback_url=f"{base}/api/chapa/webhook",
     )
     if not co:
-        await query.edit_message_text("Couldn't start the Chapa checkout. Please try again or use bank transfer.")
+        await query.edit_message_text("Couldn't start the Chapa checkout. Please try again in a moment.")
         return
 
     from db.models import SubscriptionPayment
@@ -3636,6 +3627,15 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
             return await handle_customer_photo(update, context)
         return
 
+    if is_subscription:
+        # Subscriptions are Chapa-only. Receipt screenshots are for order payments.
+        await update.message.reply_text(
+            "Subscriptions are paid online with Chapa.\n\n"
+            "Use /plans to get a secure checkout link — "
+            "your subscription activates automatically once paid."
+        )
+        return
+
     await update.message.reply_text("📄 Reading your receipt...")
 
     photo = update.message.photo[-1]
@@ -3654,42 +3654,7 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
     receiver_account = str(receipt.get("receiver_account", "")).strip().replace(" ", "")
     receiver_name = (receipt.get("receiver_name", "") or "").strip().lower()
 
-    if is_subscription:
-        plan = business.subscription_plan or "monthly"
-        amount_needed = SUBSCRIPTION_MONTHLY if plan == "monthly" else SUBSCRIPTION_YEARLY
-        methods = await _get_payment_methods()
-        expected_accounts = [m.account_number for m in methods]
-        expected_names = [m.account_name.lower() for m in methods]
-
-        amount_ok = _amount_sufficient(amount, amount_needed)
-        account_ok = any(acc in receiver_account for acc in expected_accounts) or any(
-            name in receiver_name for name in expected_names
-        )
-
-        if amount_ok and account_ok:
-            await _activate_subscription(context, business.id, plan, chat_id)
-            await update.message.reply_text(
-                f"✅ *Payment Verified!*\n\n"
-                f"Amount: *{amount:.2f} ETB*\n"
-                f"Receiver: {receipt.get('receiver_name', '')}\n"
-                f"Ref: {receipt.get('reference', 'N/A')}\n\n"
-                f"Your subscription is now active! 🎉",
-                parse_mode="Markdown",
-                reply_markup=business_kb(),
-            )
-        else:
-            issues = []
-            if not amount_ok:
-                issues.append(f"• Expected at least *{amount_needed:,} ETB*, found *{amount:.2f} ETB*")
-            if not account_ok:
-                issues.append("• Receiver account doesn't match our accounts")
-            await update.message.reply_text(
-                f"⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +
-                f"\n\nPlease check and send the correct screenshot, or use /plans.",
-                parse_mode="Markdown",
-            )
-
-    elif is_order:
+    if is_order:
         pending = context.user_data["pending_order"]
         biz_id = pending["business_id"]
         order_data = pending["data"]
