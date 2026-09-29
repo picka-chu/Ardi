@@ -944,6 +944,11 @@ applyI18n(); loadHome();
 </html>"""
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     # Do NOT embed ADMIN_API_KEY — the browser bundle is public.

@@ -309,6 +309,25 @@ def _is_admin(user_id: int) -> bool:
     return bool(ADMIN_TELEGRAM_ID) and user_id == ADMIN_TELEGRAM_ID
 
 
+def _miniapp_base() -> str:
+    """Bare https service URL with no trailing slash or /business suffix.
+
+    Accepts MINI_APP_URL as either https://host or https://host/business.
+    """
+    from config import MINI_APP_URL
+    base = (MINI_APP_URL or "").strip().rstrip("/")
+    if base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    if base.lower().endswith("/business"):
+        base = base[: -len("/business")]
+    return base
+
+
+def _miniapp_url(path: str = "") -> str:
+    base = _miniapp_base()
+    return f"{base}{path}" if base else ""
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     args = context.args
@@ -2800,8 +2819,7 @@ def business_kb():
 
 
 async def cmd_open_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from config import MINI_APP_URL
-    if not MINI_APP_URL:
+    if not _miniapp_base():
         await update.message.reply_text("Dashboard URL not configured.")
         return
     chat_id = update.effective_chat.id
@@ -2812,10 +2830,7 @@ async def cmd_open_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
     from miniapp import generate_dash_token
     token = generate_dash_token(chat_id)
-    url = MINI_APP_URL
-    if url.startswith("http://"):
-        url = "https://" + url[7:]
-    dashboard_url = f"{url}/business?token={token}"
+    dashboard_url = f"{_miniapp_url('/business')}?token={token}"
     keyboard = [[InlineKeyboardButton("🚀 Open Dashboard", web_app={"url": dashboard_url})]]
     await update.message.reply_text(
         "Tap the button below to open your business dashboard:",
@@ -2933,11 +2948,10 @@ async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if business:
         sub = _get_subscription_status(business)
         if not sub["active"]:
-            from config import MINI_APP_URL
             kb = None
-            if MINI_APP_URL:
+            if _miniapp_base():
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💳 Subscribe Now", web_app={"url": MINI_APP_URL + "/business"})],
+                    [InlineKeyboardButton("💳 Subscribe Now", web_app={"url": _miniapp_url("/business")})],
                 ])
             await update.message.reply_text(
                 f"⚠️ *Subscription Expired*\n\n"
@@ -3230,8 +3244,8 @@ from config import MINI_APP_URL
 
 def _super_admin_kb():
     buttons = []
-    if MINI_APP_URL:
-        buttons.append([InlineKeyboardButton("🚀 Open Admin Panel", web_app={"url": MINI_APP_URL})])
+    if _miniapp_base():
+        buttons.append([InlineKeyboardButton("🚀 Open Admin Panel", web_app={"url": _miniapp_url("/")})])
     buttons += [
         [InlineKeyboardButton("📋 Pending Payments", callback_data="admin_pending_payments")],
         [InlineKeyboardButton("💾 Backup DB", callback_data="admin_backup")],
