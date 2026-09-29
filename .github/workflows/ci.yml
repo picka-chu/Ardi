@@ -1,0 +1,38 @@
+name: Ardi CI
+
+on:
+  push:
+    branches: [master]
+    paths: ["ardi-ai-agent/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["ardi-ai-agent/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ardi-ai-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ardi-ai-agent/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile check
+        run: python -m compileall -q .
+
+      - name: Run tests
+        env:
+          TELEGRAM_TOKEN: "123:fake-ci"
+          GEMINI_API_KEY: "ci-dummy-key"
+          ADMIN_TELEGRAM_ID: "99999"
+        run: python -m pytest -q

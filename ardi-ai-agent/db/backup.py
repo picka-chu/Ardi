@@ -1,5 +1,6 @@
 import os
 import shutil
+import asyncio
 import logging
 import datetime
 import subprocess
@@ -9,6 +10,25 @@ from config import DATABASE_URL
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = "db_backups"
+
+
+async def _upload_offsite(backup_path: str) -> str | None:
+    """Copy a finished local backup to R2 (never raises — local backup is the source of truth)."""
+    try:
+        from storage import upload_backup_file, prune_remote_backups
+        with open(backup_path, "rb") as f:
+            data = f.read()
+        ctype = "application/sql" if backup_path.endswith(".sql") else "application/octet-stream"
+        key = await asyncio.to_thread(
+            upload_backup_file, data, os.path.basename(backup_path), ctype
+        )
+        if key:
+            await asyncio.to_thread(prune_remote_backups)
+            logger.info("Offsite backup complete: %s", key)
+        return key
+    except Exception as e:
+        logger.warning("Offsite backup skipped: %s", e)
+        return None
 
 
 def _ensure_backup_dir():
@@ -35,6 +55,7 @@ async def backup_database() -> str | None:
             backup_path = os.path.join(BACKUP_DIR, f"backup_{ts}.db")
             shutil.copy2(db_path, backup_path)
             logger.info("Database backed up to %s", backup_path)
+            await _upload_offsite(backup_path)
             return backup_path
 
         parsed = urlparse(DATABASE_URL.replace("+asyncpg", ""))
@@ -56,6 +77,7 @@ async def backup_database() -> str | None:
             logger.error("pg_dump failed: %s", result.stderr)
             return None
         logger.info("Database backed up to %s", backup_path)
+        await _upload_offsite(backup_path)
         return backup_path
     except FileNotFoundError:
         logger.error("pg_dump not found. Install PostgreSQL client tools or use psql.")

@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import os
 import time
 import random
 import re
@@ -25,9 +26,24 @@ def _get_client():
                 _client = genai.Client(api_key=GEMINI_API_KEY)
     return _client
 
-MODELS = [
-    "gemini-3.5-flash-lite",
-]
+def _load_models() -> list:
+    """Model chain: primary first, fallbacks after.
+
+    Override with GEMINI_MODELS="model-a,model-b" env var. The caller
+    (_call_model_sync) already retries each model then walks the chain,
+    so one retired/rate-limited model can no longer silence every shop.
+    """
+    raw = os.getenv("GEMINI_MODELS", "")
+    if raw.strip():
+        return [m.strip() for m in raw.split(",") if m.strip()]
+    return [
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    ]
+
+
+MODELS = _load_models()
 
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # seconds, doubles each attempt
@@ -51,7 +67,7 @@ Be helpful, accurate, and direct."""
 
 def _call_model_sync(contents, model_index=0, attempt=0, system_instruction=None):
     if model_index >= len(MODELS):
-        raise RuntimeError("All Gemini models exhausted")
+        raise RuntimeError("All AI models exhausted")
     model = MODELS[model_index]
     try:
         kwargs = {"model": model, "contents": contents}

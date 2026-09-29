@@ -80,3 +80,42 @@ async def upload_product_photo(photo_bytes: bytes, business_id: int, product_nam
     except Exception as e:
         logger.error("R2 upload error: %s", e)
         return None
+
+
+BACKUP_PREFIX = "backups/"
+BACKUP_KEEP = 7
+
+
+def upload_backup_file(data: bytes, filename: str, content_type: str = "application/octet-stream") -> str | None:
+    """Upload a database backup file to R2 under backups/. Returns the key, else None."""
+    if not _r2_configured():
+        logger.warning("R2 not configured — skipping offsite backup")
+        return None
+    if not data:
+        return None
+    key = f"{BACKUP_PREFIX}{filename}"
+    try:
+        _get_client().put_object(Bucket=R2_BUCKET, Key=key, Body=data, ContentType=content_type)
+        logger.info("Backup uploaded offsite: %s", key)
+        return key
+    except Exception as e:
+        logger.error("R2 backup upload failed: %s", e)
+        return None
+
+
+def prune_remote_backups(keep: int = BACKUP_KEEP) -> None:
+    """Keep only the newest `keep` objects under backups/ in R2."""
+    if not _r2_configured():
+        return
+    try:
+        client = _get_client()
+        resp = client.list_objects_v2(Bucket=R2_BUCKET, Prefix=BACKUP_PREFIX)
+        objs = resp.get("Contents", [])
+        if len(objs) <= keep:
+            return
+        objs.sort(key=lambda o: o.get("LastModified"))
+        for o in objs[:len(objs) - keep]:
+            client.delete_object(Bucket=R2_BUCKET, Key=o["Key"])
+            logger.info("Pruned remote backup: %s", o["Key"])
+    except Exception as e:
+        logger.error("R2 backup prune failed: %s", e)
