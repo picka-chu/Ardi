@@ -72,17 +72,20 @@ async def create_checkout(business, plan: str, return_url: str, callback_url: st
         return None
     tx_ref = make_tx_ref(business.id, plan)
     name = (business.name or "Business").strip() or "Business"
+    # Chapa requires a valid email (we don't collect owner emails; receipts live in-app).
+    email = f"ardi-biz-{int(business.id)}@gmail.com"
     payload = {
         "amount": str(amount),
         "currency": "ETB",
-        "email": f"biz-{business.id}@ardi.bot",
+        "email": email,
         "first_name": name[:50],
         "last_name": (business.phone or "Owner")[:50],
         "phone_number": (business.phone or "")[:20],
         "tx_ref": tx_ref,
         "callback_url": callback_url,
         "return_url": return_url,
-        "customization": {"title": "Ardi AI Subscription", "description": f"{plan.capitalize()} plan"},
+        # NOTE: Chapa caps customization.title at 16 chars.
+        "customization": {"title": "Ardi AI Plan", "description": f"{plan.capitalize()} plan"},
     }
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
