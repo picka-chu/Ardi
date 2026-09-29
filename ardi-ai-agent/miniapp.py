@@ -1839,6 +1839,13 @@ async def api_backup(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/admin/sentry-test")
+async def api_sentry_test(request: Request):
+    """Admin-only: raise a test error to verify Sentry reporting. Delete me after first use."""
+    await _require_admin(request)
+    raise RuntimeError("Sentry test event from Ardi admin — safe to ignore/resolve.")
+
+
 @app.get("/api/stats")
 async def stats(request: Request):
     await _require_admin(request)
