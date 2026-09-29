@@ -108,12 +108,25 @@ class TestMiniappAuth:
         old = int(time.time()) - miniapp.INIT_DATA_MAX_AGE - 100
         assert miniapp._validate_init_data(f"auth_date={old}&user=%7B%7D&hash=abc") is None
 
-    def test_dash_token_expiry(self):
+    def test_dash_token_roundtrip(self):
         tok = miniapp.generate_dash_token(123)
         assert miniapp.validate_dash_token(tok) == 123
-        # Expire manually
-        miniapp._dash_tokens[tok]["expires"] = time.monotonic() - 1
-        assert miniapp.validate_dash_token(tok) is None
+        assert miniapp.validate_dash_token("bogus") is None
+        assert miniapp.validate_dash_token("1.2.3") is None
+
+    def test_dash_token_expiry(self):
+        import hmac as _hm
+        import hashlib as _hl
+        key = miniapp._dash_hmac_key()
+        past = int(time.time()) - 10
+        sig = _hm.new(key, f"123.{past}".encode(), _hl.sha256).hexdigest()[:32]
+        assert miniapp.validate_dash_token(f"123.{past}.{sig}") is None
+
+    def test_dash_token_survives_restart(self):
+        # Stateless format: no server-side dict entry needed.
+        tok = miniapp.generate_dash_token(456)
+        miniapp._dash_tokens.clear()
+        assert miniapp.validate_dash_token(tok) == 456
 
     def test_lang_cache_tuple_shape(self):
         # language_callback must store (lang, timestamp) tuple, not bare str

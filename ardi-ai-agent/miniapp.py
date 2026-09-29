@@ -1,8 +1,10 @@
 """Mini app web server for Ardi AI."""
-import os, time, hmac, hashlib, json, secrets
+import os, time, hmac, hashlib, json, logging
 from urllib.parse import unquote_plus
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Ardi AI")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
@@ -24,13 +26,31 @@ def _sweep_dash_tokens() -> None:
         _dash_tokens.pop(tok, None)
 
 
+def _dash_hmac_key() -> bytes:
+    # Stable across restarts (unlike the in-memory dict below).
+    return (ADMIN_API_KEY or BOT_TOKEN or "ardi-dev").encode()
+
+
 def generate_dash_token(telegram_id: int) -> str:
-    token = secrets.token_hex(20)
-    _dash_tokens[token] = {"telegram_id": telegram_id, "expires": time.monotonic() + DASH_TOKEN_TTL}
-    return token
+    # Stateless: tid.exp.sig — survives restarts/redeploys (1h TTL).
+    exp = int(time.time()) + DASH_TOKEN_TTL
+    body = f"{telegram_id}.{exp}"
+    sig = hmac.new(_dash_hmac_key(), body.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{body}.{sig}"
 
 
 def validate_dash_token(token: str) -> int | None:
+    # 1) Stateless format.
+    try:
+        parts = (token or "").split(".")
+        if len(parts) == 3:
+            tid_s, exp_s, sig = parts
+            expect = hmac.new(_dash_hmac_key(), f"{tid_s}.{exp_s}".encode(), hashlib.sha256).hexdigest()[:32]
+            if hmac.compare_digest(expect, sig) and int(exp_s) > time.time():
+                return int(tid_s)
+    except (ValueError, AttributeError):
+        pass
+    # 2) Legacy in-memory tokens (pre-restart format).
     _sweep_dash_tokens()
     entry = _dash_tokens.get(token)
     if not entry:
@@ -51,10 +71,21 @@ async def _require_admin(request: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+# Last auth-failure reason (for 401 diagnostics in Render logs — no secrets logged).
+_auth_fail = {"reason": ""}
+
+
+def _fail(reason: str) -> None:
+    _auth_fail["reason"] = reason
+    return None
+
+
 def _validate_init_data(init_data: str) -> dict | None:
     try:
-        if not init_data or not BOT_TOKEN:
-            return None
+        if not init_data:
+            return _fail("no_init_data")
+        if not BOT_TOKEN:
+            return _fail("no_bot_token")
         parsed = {}
         for part in init_data.split("&"):
             if "=" not in part:
@@ -62,22 +93,25 @@ def _validate_init_data(init_data: str) -> dict | None:
             k, v = part.split("=", 1)
             parsed[unquote_plus(k)] = unquote_plus(v)
         if "hash" not in parsed or "auth_date" not in parsed:
-            return None
+            return _fail("missing_fields")
         try:
             auth_ts = int(parsed["auth_date"])
         except (ValueError, TypeError):
-            return None
+            return _fail("bad_auth_date")
         if abs(time.time() - auth_ts) > INIT_DATA_MAX_AGE:
-            return None
+            return _fail("stale_auth_date")
         data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()) if k != "hash")
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(computed, parsed.get("hash", "")):
-            return None
+            return _fail("bad_hash")
         user_raw = parsed.get("user", "")
-        return json.loads(user_raw) if user_raw else None
+        try:
+            return json.loads(user_raw) if user_raw else _fail("no_user")
+        except Exception:
+            return _fail("bad_user_json")
     except Exception:
-        return None
+        return _fail("exception")
 
 
 async def _require_business(request: Request):
@@ -97,6 +131,10 @@ async def _require_business(request: Request):
                 b = result.scalar_one_or_none()
                 if b:
                     return {"business": b, "telegram_id": tid, "user": user}
+            logger.warning("miniapp auth: valid Telegram user %s has no business", tid)
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        logger.warning("miniapp auth: initData ok but no user id")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     # 2) Try dashboard token (Desktop fallback — initData is buggy on tdesktop)
     # Token via Authorization-style header only (never query string, to avoid access-log leaks).
@@ -112,6 +150,11 @@ async def _require_business(request: Request):
                 b = result.scalar_one_or_none()
                 if b:
                     return {"business": b, "telegram_id": tid, "user": {"id": tid}}
+            logger.warning("miniapp auth: valid dash token for %s has no business", tid)
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        logger.warning("miniapp auth failed: bad_token (init reason: %s)", _auth_fail["reason"])
+    else:
+        logger.warning("miniapp auth failed: %s path=%s", _auth_fail["reason"] or "no_credentials", request.url.path)
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 
