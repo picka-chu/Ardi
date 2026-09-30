@@ -1012,7 +1012,8 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
                 f"Account: `{business.order_bank_account}`\n"
                 f"Name: {business.order_account_holder or business.order_bank_name}\n\n"
                 f"Then tap *I've Paid* and send your receipt "
-                f"(photo, PDF, or bank receipt link) — I'll verify it automatically!",
+                f"(photo, PDF, or bank receipt link) — I'll verify it automatically!\n\n"
+                f"_Changed your mind? Send /cancel anytime to stop._",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(pay_rows),
             )
@@ -2447,6 +2448,41 @@ async def _transcribe_business_voice(context, connection_id: str, customer_chat_
     return transcript
 
 
+async def _verify_business_receipt_photo(context, connection_id: str, customer_chat_id: int,
+                                           business, photo, pending) -> None:
+    """Receipt sent as a photo inside a Business chat: verify + confirm
+    through the business connection (same rules as the direct-chat flow)."""
+    async def _say(text: str):
+        await context.bot.send_message(chat_id=customer_chat_id, text=text,
+                                       parse_mode="Markdown",
+                                       business_connection_id=connection_id)
+
+    try:
+        file = await photo.get_file()
+        image_bytes = bytes(await file.download_as_bytearray())
+    except Exception as e:
+        logger.warning("Business receipt download failed (conn=%s): %s", connection_id, e)
+        return
+    await context.bot.send_message(chat_id=customer_chat_id, text="📄 Reading your receipt...",
+                                   business_connection_id=connection_id)
+
+    receipt = await verify_receipt(image_bytes)
+    if receipt.get("status") in ("UNREADABLE", "ERROR"):
+        await _say("I couldn't read that receipt clearly. Please send a clearer photo.")
+        return
+    ok, issues = _match_order_receipt(
+        business, pending["total"], receipt.get("amount", 0),
+        str(receipt.get("receiver_account", "")), receipt.get("receiver_name", ""))
+    if ok:
+        await _confirm_paid_order(None, context, business, pending["data"],
+                                  receipt.get("amount", 0), receipt.get("reference", "N/A"),
+                                  pending.get("order_id"),
+                                  via=(customer_chat_id, connection_id))
+    else:
+        await _say("⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +
+                   "\n\nPlease check and send the correct receipt (or /cancel to stop).")
+
+
 async def handle_business_photo(context, connection_id: str, customer_chat_id: int, message) -> None:
     """Customer sent a photo first in a Business chat: match catalog + reply.
 
@@ -2484,6 +2520,16 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
         products = (await session.execute(
             select(Product).where(Product.business_id == business.id)
         )).scalars().all()
+        biz_id = business.id
+
+    # STAGE CHECK: an unpaid invoice turns every photo into a receipt.
+    # (Pending state is per-customer, so it is visible from Business chats too.)
+    pending = context.user_data.get("pending_order")
+    if (pending and context.user_data.get("state") == "awaiting_order_payment"
+            and pending.get("business_id") == biz_id):
+        return await _verify_business_receipt_photo(
+            context, connection_id, customer_chat_id, business,
+            message.photo[-1], pending)
 
     if not products:
         try:
@@ -3338,15 +3384,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    was_paying = context.user_data.get("state") == "awaiting_order_payment"
+    context.user_data.pop("state", None)
+    context.user_data.pop("pending_order", None)
     keys_to_clear = [k for k in context.user_data if k not in (
         "customer_chat_active", "customer_chat_business_id", "customer_chat_history",
-        "pending_order", "state", "orders_page",
+        "orders_page",
     )]
     for k in keys_to_clear:
         context.user_data.pop(k, None)
     async with async_session() as session:
         b = await get_business(session, update.effective_chat.id)
-    await update.message.reply_text("Cancelled.", reply_markup=business_kb() if b else guest_kb())
+    if was_paying:
+        await update.message.reply_text(
+            "Order payment cancelled — no charge was made.\n\n"
+            "Send me what you'd like to order whenever you're ready!",
+            reply_markup=business_kb() if b else guest_kb())
+    else:
+        await update.message.reply_text("Cancelled.", reply_markup=business_kb() if b else guest_kb())
     return ConversationHandler.END
 
 
@@ -3848,9 +3903,13 @@ def _match_order_receipt(biz, amount_needed, got_amount, got_account, got_name) 
     return (amount_ok and account_ok), issues
 
 
-async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, receipt_ref, order_id=None):
+async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, receipt_ref, order_id=None, via=None):
     """Confirm payment: reuse the pre-created invoice order when present,
-    otherwise create it. Clears payment state, notifies customer + owner."""
+    otherwise create it. Clears payment state, notifies customer + owner.
+
+    via=(chat_id, business_connection_id) replies inside a Business chat
+    instead of the direct bot chat.
+    """
     order = None
     if order_id:
         async with async_session() as session:
@@ -3866,14 +3925,14 @@ async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, 
                 select(Product).where(Product.business_id == biz.id)
             )
             products = products_result.scalars().all()
-        order = await _create_order(biz, update.effective_user, order_data, products)
+        order = await _create_order(biz, update.effective_user if update else None, order_data, products)
     items_text = ", ".join(
         f"{i.get('product','')} × {i.get('quantity',1)}"
         for i in (order_data.get("items", [order_data]))
     )
     context.user_data.pop("state", None)
     context.user_data.pop("pending_order", None)
-    await update.message.reply_text(
+    confirm_text = (
         f"✅ *Payment Verified!*\n\n"
         f"Amount: *{float(receipt_amount or 0):.2f} ETB*\n"
         f"Ref: {receipt_ref or 'N/A'}\n\n"
@@ -3882,10 +3941,15 @@ async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, 
         f"• Name: {order_data.get('customer_name', '')}\n"
         f"• Phone: {order_data.get('customer_phone', '')}\n"
         f"• Address: {order_data.get('customer_address', '')}\n\n"
-        f"The business will prepare your order.",
-        parse_mode="Markdown",
+        f"The business will prepare your order."
     )
-    await _notify_new_order(context, biz, order, update.effective_user)
+    if via:
+        await context.bot.send_message(chat_id=via[0], text=confirm_text,
+                                       parse_mode="Markdown",
+                                       business_connection_id=via[1])
+    else:
+        await update.message.reply_text(confirm_text, parse_mode="Markdown")
+    await _notify_new_order(context, biz, order, update.effective_user if update else None)
     history = context.user_data.get("customer_chat_history", [])
     history.append({"role": "assistant", "text": f"[Order #{order.id} confirmed with payment: {items_text}]"})
     context.user_data["customer_chat_history"] = history[-20:]
@@ -3904,7 +3968,8 @@ async def ord_paid_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.edit_message_text(
         f"Great! Send your receipt for *{pending.get('total', 0):.2f} ETB* "
-        f"(invoice `{pending.get('ref', '')}`) — a clear *photo*, a *PDF*, or a *link* to it.",
+        f"(invoice `{pending.get('ref', '')}`) — a clear *photo*, a *PDF*, or a *bank receipt link*.\n\n"
+        f"_Or send /cancel to stop._",
         parse_mode="Markdown",
     )
 
