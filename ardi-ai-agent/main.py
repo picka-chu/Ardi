@@ -100,7 +100,6 @@ from bot.handlers import (
     subscription_callback,
     chapa_pay_callback,
     chapa_check_callback,
-    payment_notify_callback,
     admin_confirm_payment_callback,
     handle_payment_screenshot,
     # Order Settings
@@ -299,21 +298,25 @@ def main():
         handle_business_message,
     ))
 
-    # Customer messages + Reply keyboard (single router)
+    # Customer messages + Reply keyboard (single router).
+    # NOTE: forwarded channel messages are excluded here — they belong to
+    # handle_forwarded_channel (registered below), otherwise text forwards
+    # get swallowed by the owner intent router (incl. its subscription wall).
     app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE & ~filters.UpdateType.BUSINESS_MESSAGE,
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE & ~filters.UpdateType.BUSINESS_MESSAGE & ~filters.FORWARDED,
         keyboard_handler,
     ))
 
-    # Payment receipt screenshots (photos from users awaiting payment)
+    # Payment receipt screenshots (photos from users awaiting payment).
+    # Forwarded channel photos are excluded — they belong to handle_forwarded_channel.
     app.add_handler(MessageHandler(
-        filters.PHOTO & filters.ChatType.PRIVATE,
+        filters.PHOTO & filters.ChatType.PRIVATE & ~filters.FORWARDED,
         handle_payment_screenshot,
     ))
 
     # Voice notes (transcribed, then processed as text)
     app.add_handler(MessageHandler(
-        filters.VOICE & filters.ChatType.PRIVATE & ~filters.UpdateType.BUSINESS_MESSAGE,
+        filters.VOICE & filters.ChatType.PRIVATE & ~filters.UpdateType.BUSINESS_MESSAGE & ~filters.FORWARDED,
         handle_voice_message,
     ))
 
@@ -334,7 +337,6 @@ def main():
     app.add_handler(CallbackQueryHandler(subscription_callback, pattern="^sub_(monthly|yearly)$"))
     app.add_handler(CallbackQueryHandler(chapa_pay_callback, pattern="^sub_chapa_(monthly|yearly)$"))
     app.add_handler(CallbackQueryHandler(chapa_check_callback, pattern="^sub_chapacheck_"))
-    app.add_handler(CallbackQueryHandler(payment_notify_callback, pattern="^sub_paid_"))
     app.add_handler(CallbackQueryHandler(admin_confirm_payment_callback, pattern="^sub_confirm_"))
     app.add_handler(CallbackQueryHandler(orders_toggle_callback, pattern="^orders_toggle$"))
     app.add_handler(CallbackQueryHandler(cmd_order_settings, pattern="^order_settings$"))

@@ -196,8 +196,10 @@ input,textarea,select,button{font-family:inherit}
 .cd{background:var(--c);border-radius:var(--r);padding:16px;margin-bottom:12px;border:1px solid rgba(255,255,255,.04)}
 .sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 .sc{background:var(--c);border-radius:var(--r);padding:14px;border:1px solid rgba(255,255,255,.04)}
-.sc .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:8px}
-.sc .ic.pu{background:rgba(108,92,231,.15)}.sc .ic.gr{background:rgba(46,213,115,.15)}.sc .ic.or{background:rgba(255,165,2,.15)}.sc .ic.bl{background:rgba(54,164,255,.15)}.sc .ic.re{background:rgba(255,71,87,.15)}
+.sc .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.sc .ic.pu{background:rgba(108,92,231,.15);color:#a29bfe}.sc .ic.gr{background:rgba(46,213,115,.15);color:#2ed573}.sc .ic.or{background:rgba(255,165,2,.15);color:#ffa502}.sc .ic.bl{background:rgba(54,164,255,.15);color:#36a4ff}.sc .ic.re{background:rgba(255,71,87,.15);color:#ff4757}
+.sc .ic .dt2{width:10px;height:10px;border-radius:50%;background:currentColor}
+.nb .ni svg{display:block}
 .sl{font-size:11px;color:var(--h);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
 .sv{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2}
 .sv.sk{width:50px;height:28px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:4px}
@@ -241,29 +243,29 @@ input,textarea,select,button{font-family:inherit}
 <div class="ts" id="ts"></div>
 <div class="mod a" id="lock"><div class="mw" style="text-align:center">
 <div class="lo" style="width:56px;height:56px;font-size:26px;margin:0 auto 12px">A</div>
-<div class="mh">🔒 Admin Access</div>
+<div class="mh">Admin Access</div>
 <div class="mc">Enter your admin key to unlock the dashboard.</div>
 <input class="txt" id="lockKey" type="password" placeholder="Admin key" autocomplete="off" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')unlock()">
 <button class="btn bp" onclick="unlock()">Unlock</button>
 <div id="lockErr" style="font-size:12px;color:#ff4757;min-height:18px"></div>
 </div></div>
 <nav class="nv" id="nv">
-  <button class="nb a" data-pg="dash"><span class="ni">📊</span>Dashboard</button>
-  <button class="nb" data-pg="biz"><span class="ni">🏪</span>Businesses</button>
-  <button class="nb" data-pg="sub"><span class="ni">💳</span>Subs</button>
-  <button class="nb" data-pg="ord"><span class="ni">📦</span>Orders</button>
-  <button class="nb" data-pg="set"><span class="ni">⚙️</span>Settings</button>
+  <button class="nb a" data-pg="dash"><span class="ni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></svg></span>Dashboard</button>
+  <button class="nb" data-pg="biz"><span class="ni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9l1-5h14l1 5"/><path d="M4 9h16v11H4z"/><path d="M9 20v-6h6v6"/></svg></span>Businesses</button>
+  <button class="nb" data-pg="sub"><span class="ni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span>Subs</button>
+  <button class="nb" data-pg="ord"><span class="ni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14v18l-2.3-1.5L14.4 21l-2.4-1.5L9.6 21l-2.3-1.5L5 21z"/><path d="M9 8h6M9 12h6"/></svg></span>Orders</button>
+  <button class="nb" data-pg="set"><span class="ni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>Settings</button>
 </nav>
 
-<div class="pg a" id="pg-dash"><div class="hd"><div class="hl"><div class="lo">A</div><div class="ht"><h1>Ardi AI</h1><p>Admin Dashboard</p></div></div><div class="bd" id="stb"><span class="dt"></span><span id="stt">Online</span></div></div><div class="sg" id="ds"></div><div class="sh">💰 Revenue</div><div class="sg" id="rs"></div><div class="sh">🕐 Recent Orders</div><div class="cd" id="ro"><div class="em">Loading...</div></div></div>
+<div class="pg a" id="pg-dash"><div class="hd"><div class="hl"><div class="lo">A</div><div class="ht"><h1>Ardi AI</h1><p>Admin Dashboard</p></div></div><div class="bd" id="stb"><span class="dt"></span><span id="stt">Online</span></div></div><div class="sg" id="ds"></div><div class="sh">Revenue</div><div class="sg" id="rs"></div><div class="sh">Recent Orders</div><div class="cd" id="ro"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-biz"><div class="hd"><div class="ht"><h1>🏪 Businesses</h1><p id="bc">—</p></div></div><input class="sr" id="bs" placeholder="Search..." oninput="fb()"><div class="cd" id="bl"><div class="em">Loading...</div></div></div>
+<div class="pg" id="pg-biz"><div class="hd"><div class="ht"><h1>Businesses</h1><p id="bc">—</p></div></div><input class="sr" id="bs" placeholder="Search..." oninput="fb()"><div class="cd" id="bl"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-sub"><div class="hd"><div class="ht"><h1>💳 Subscriptions</h1></div><select id="sf" onchange="ls()" style="background:var(--c);color:var(--t);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;font-size:12px;outline:none"><option value="all">All</option><option value="active">Active</option><option value="trial">Trial</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="awaiting_payment">Pending</option></select></div><div id="sl"><div class="em">Loading...</div></div></div>
+<div class="pg" id="pg-sub"><div class="hd"><div class="ht"><h1>Subscriptions</h1></div><select id="sf" onchange="ls()" style="background:var(--c);color:var(--t);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;font-size:12px;outline:none"><option value="all">All</option><option value="active">Active</option><option value="trial">Trial</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="awaiting_payment">Pending</option></select></div><div id="sl"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-ord"><div class="hd"><div class="ht"><h1>📦 Orders</h1><p id="oc">—</p></div></div><div class="mg" id="os"></div><div class="cd" id="ol"><div class="em">Loading...</div></div></div>
+<div class="pg" id="pg-ord"><div class="hd"><div class="ht"><h1>Orders</h1><p id="oc">—</p></div></div><div class="mg" id="os"></div><div class="cd" id="ol"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>⚙️ Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">💳 Payment Methods</div><div class="cd" id="pmc"><div class="em">Loading...</div></div><div class="sh">📢 Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">📨 Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">💾 Backup Database</button><button class="btn bdg" onclick="cr()">🔒 Revoke All Trials</button><button class="btn bs" onclick="lockout()">🔓 Sign Out</button></div>
+<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">Payment Methods</div><div class="cd" id="pmc"><div class="em">Loading...</div></div><div class="sh">Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">Backup Database</button><button class="btn bdg" onclick="cr()">Revoke All Trials</button><button class="btn bs" onclick="lockout()">Sign Out</button></div>
 
 <div class="pg" id="pg-dtl"><button class="bk" onclick="sp('dash')">← Back</button><div id="dc"></div></div>
 
@@ -285,8 +287,8 @@ function sp(p){document.querySelectorAll('.pg').forEach(x=>x.classList.remove('a
 async function ap(p,o){ld(true);try{const r=await fetch(p,{headers:hd(),...o});if(r.status===401||r.status===403){lockShow(dk()?'Wrong key — try again.':'');return null}if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}catch(e){tt('Error: '+e.message,'er');return null}finally{ld(false)}}
 
 async function lda(){const d=await ap('/api/admin/dashboard');if(!d)return;const s=$('stb');if(d.bot_online){s.className='bd';$('stt').textContent='Online'}else{s.className='bd o';$('stt').textContent='Offline'}
-$('ds').innerHTML=[{ic:'🏪',c:'pu',l:'Businesses',v:d.businesses},{ic:'✅',c:'gr',l:'Active Subs',v:d.active_subscriptions},{ic:'📦',c:'or',l:'Orders (30d)',v:d.orders_30d},{ic:'👥',c:'bl',l:'Users',v:d.users}].map(s=>`<div class="sc"><div class="ic ${s.c}">${s.ic}</div><div class="sl">${s.l}</div><div class="sv">${es(String(s.v??'—'))}</div></div>`).join('')
-$('rs').innerHTML=[{ic:'💰',c:'gr',l:'Sub Revenue',v:'ETB '+(d.sub_revenue??0).toLocaleString()},{ic:'📊',c:'pu',l:'Avg Order',v:'ETB '+(d.avg_order_value??0).toLocaleString()},{ic:'📈',c:'bl',l:'Pending Orders',v:d.pending_orders??0},{ic:'⭐',c:'or',l:'Trial Biz',v:d.trial_count??0}].map(s=>`<div class="sc"><div class="ic ${s.c}">${s.ic}</div><div class="sl">${s.l}</div><div class="sv">${es(String(s.v))}</div></div>`).join('')
+$('ds').innerHTML=[{ic:'🏪',c:'pu',l:'Businesses',v:d.businesses},{ic:'✅',c:'gr',l:'Active Subs',v:d.active_subscriptions},{ic:'📦',c:'or',l:'Orders (30d)',v:d.orders_30d},{ic:'👥',c:'bl',l:'Users',v:d.users}].map(s=>`<div class="sc"><div class="ic ${s.c}"><span class="dt2"></span></div><div class="sl">${s.l}</div><div class="sv">${es(String(s.v??'—'))}</div></div>`).join('')
+$('rs').innerHTML=[{ic:'💰',c:'gr',l:'Sub Revenue',v:'ETB '+(d.sub_revenue??0).toLocaleString()},{ic:'📊',c:'pu',l:'Avg Order',v:'ETB '+(d.avg_order_value??0).toLocaleString()},{ic:'📈',c:'bl',l:'Pending Orders',v:d.pending_orders??0},{ic:'⭐',c:'or',l:'Trial Biz',v:d.trial_count??0}].map(s=>`<div class="sc"><div class="ic ${s.c}"><span class="dt2"></span></div><div class="sl">${s.l}</div><div class="sv">${es(String(s.v))}</div></div>`).join('')
 const ro=d.recent_orders||[];if(!ro.length){$('ro').innerHTML='<div class="em">No orders</div>';return}
 $('ro').innerHTML=ro.map(o=>`<div class="li" onclick="so(${o.id})"><div class="la">#${o.id}</div><div class="lb"><div class="lt">${es(o.customer_name||'Customer')}</div><div class="ls">${es(o.business_name||'')} · ${o.item_count||0} items</div></div><div class="lr"><div style="font-weight:700">ETB ${(+o.total_price).toLocaleString()}</div><span class="st ${o.status==='pending'?'sp':o.status==='confirmed'?'sa':o.status==='completed'?'skk':'sx'}">${es(o.status)}</span></div></div>`).join('')}
 
@@ -1663,26 +1665,6 @@ async def biz_subscription(request: Request):
     }
 
 
-@app.post("/api/business/subscription/select-plan")
-async def biz_select_plan(request: Request):
-    biz_data = await _require_business(request)
-    b = biz_data["business"]
-    try:
-        body = await request.json()
-        plan = body.get("plan", "monthly")
-        if plan not in ("monthly", "yearly"):
-            return {"error": "Invalid plan"}
-        from db.database import async_session
-        async with async_session() as s:
-            bb = await s.get(type(b), b.id)
-            bb.subscription_plan = plan
-            bb.subscription_status = "awaiting_payment"
-            await s.commit()
-        return {"success": True}
-    except Exception as e:
-        return {"error": str(e)}
-
-
 @app.post("/api/business/subscription/chapa-pay")
 async def biz_chapa_pay(request: Request):
     """Create a Chapa checkout for the owner's plan. Returns {checkout_url, tx_ref}."""
@@ -1835,58 +1817,6 @@ async def chapa_webhook(request: Request):
         except Exception:
             pass
     return {"ok": True}
-
-
-@app.post("/api/business/subscription/upload-receipt")
-async def biz_upload_receipt(request: Request):
-    biz_data = await _require_business(request)
-    b = biz_data["business"]
-    try:
-        body = await request.json()
-        photo_data = body.get("photo_data")
-        if not photo_data:
-            raise HTTPException(status_code=400, detail="No image data")
-        if len(photo_data) > 7 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Image too large")
-        import base64, logging
-        logger = logging.getLogger(__name__)
-        try:
-            photo_bytes = base64.b64decode(photo_data, validate=True)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid image data")
-        if len(photo_bytes) > MAX_PHOTO_BYTES:
-            raise HTTPException(status_code=400, detail="Image too large")
-        from storage import upload_product_photo
-        url = await upload_product_photo(photo_bytes, b.id, f"sub_receipt_{b.id}")
-        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-        from config import ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, TELEGRAM_TOKEN
-        plan = b.subscription_plan or "monthly"
-        amount = SUBSCRIPTION_MONTHLY if plan == "monthly" else SUBSCRIPTION_YEARLY
-        bot = Bot(TELEGRAM_TOKEN)
-        msg = (
-            f"💳 *Payment Receipt Uploaded*\n\n"
-            f"Business: *{b.name}* (ID: {b.id})\n"
-            f"Plan: *{plan.capitalize()}*\n"
-            f"Amount: *{amount:,} ETB*\n"
-        )
-        if url:
-            msg += f"[View Receipt]({url})\n"
-        msg += "\nVerify and confirm:"
-        try:
-            await bot.send_message(
-                ADMIN_TELEGRAM_ID,
-                msg,
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ Confirm Payment", callback_data=f"sub_confirm_{b.id}_{plan}")],
-                ]),
-            )
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.warning("Failed to notify admin: %s", e)
-        return {"success": True}
-    except Exception as e:
-        return {"error": str(e)}
 
 
 @app.get("/api/business/settings")

@@ -2094,6 +2094,41 @@ async def cmd_connectchannel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=back_kb())
 
 
+async def _import_channel_photo(business_id: int, photo, caption: str):
+    """Save a channel (or forwarded channel) photo as a product.
+
+    Requires a price in the caption (e.g. '500 birr'). Returns the
+    Product, or None when there is no readable price / identification fails.
+    """
+    price_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(birr|etb|br)\b", caption or "", re.IGNORECASE)
+    if not price_match:
+        return None
+    try:
+        file = await photo.get_file()
+        buf = io.BytesIO()
+        await file.download_to_memory(buf)
+        photo_bytes = buf.getvalue()
+    except Exception as e:
+        logger.warning("Channel photo download failed: %s", e)
+        return None
+
+    result = await identify_product(photo_bytes)
+    product_name = result.get("name", "unknown") or "unknown"
+    price = _parse_price(price_match.group(1))
+    photo_url = await upload_product_photo(photo_bytes, business_id, product_name)
+
+    try:
+        async with async_session() as session:
+            p = Product(business_id=business_id, name=product_name, price=price,
+                        photo_file_id=photo.file_id, photo_url=photo_url)
+            session.add(p)
+            await session.commit()
+            return p
+    except Exception as e:
+        logger.error("Channel product save failed: %s", e)
+        return None
+
+
 async def handle_forwarded_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.forward_from_chat:
         return
@@ -2125,8 +2160,30 @@ async def handle_forwarded_channel(update: Update, context: ContextTypes.DEFAULT
 
         business.channel_id = channel.id
         await session.commit()
+        biz_id = business.id
 
     name = channel.title or channel.username or "channel"
+
+    # Scrape the forwarded message itself when it carries a product photo.
+    fwd = update.message
+    if fwd.photo:
+        saved = await _import_channel_photo(biz_id, fwd.photo[-1], fwd.caption or "")
+        if saved:
+            await update.message.reply_text(
+                f"✅ Channel '{name}' connected!\n\n"
+                f"📦 Product saved: *{saved.name}*"
+                f"{f' — {saved.price:.0f} ETB' if saved.price else ''}",
+                parse_mode="Markdown",
+                reply_markup=back_kb())
+            return
+        await update.message.reply_text(
+            f"✅ Channel '{name}' connected!\n\n"
+            "That photo has no readable price — add the price in the caption "
+            "(e.g. `500 birr`) and forward it again to save it as a product.",
+            parse_mode="Markdown",
+            reply_markup=back_kb())
+        return
+
     await update.message.reply_text(
         f"✅ Channel '{name}' connected! New product posts will be saved automatically.",
         reply_markup=back_kb())
@@ -2190,26 +2247,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not business:
         return
 
-    price_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(birr|etb|br)\b", caption, re.IGNORECASE)
-    if not price_match:
-        return
-
-    photo = message.photo[-1]
-    file = await photo.get_file()
-    photo_bytes = io.BytesIO()
-    await file.download_to_memory(photo_bytes)
-    photo_bytes = photo_bytes.getvalue()
-
-    result = await identify_product(photo_bytes)
-    product_name = result.get("name", "unknown")
-    price = _parse_price(price_match.group(1))
-
-    photo_url = await upload_product_photo(photo_bytes, business.id, product_name)
-
-    async with async_session() as session:
-        session.add(Product(business_id=business.id, name=product_name, price=price,
-                            photo_file_id=photo.file_id, photo_url=photo_url))
-        await session.commit()
+    await _import_channel_photo(business.id, message.photo[-1], caption)
 
 
 # ─── Telegram Business Integration ──────────────────────────────────────────
@@ -3490,55 +3528,6 @@ async def chapa_check_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
     else:
         await query.edit_message_text("Payment confirmed — activation hit a snag. Contact support.")
-
-
-async def payment_notify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    parts = data.split("_")
-    if len(parts) < 4:
-        await query.edit_message_text("Invalid payment link.")
-        return
-    biz_id = None
-    try:
-        biz_id = int(parts[2])
-    except (ValueError, TypeError):
-        await query.edit_message_text("Invalid payment link.")
-        return
-    plan = parts[3]
-    if plan not in ("monthly", "yearly"):
-        await query.edit_message_text("Invalid plan.")
-        return
-
-    async with async_session() as session:
-        business = await _require_owner_business(session, update.effective_chat.id)
-        if not business or business.id != biz_id:
-            await query.edit_message_text("Payment link does not match your business.")
-            return
-        result = await session.execute(select(Business).where(Business.id == biz_id))
-        business = result.scalar_one_or_none()
-        biz_name = business.name if business else "Unknown"
-
-    await query.edit_message_text(
-        f"📩 Payment notification sent to admin!\n\n"
-        f"They will activate your subscription shortly.\n"
-        f"Business: *{biz_name}*\n"
-        f"Plan: *{plan.capitalize()}*",
-        parse_mode="Markdown",
-    )
-
-    await _notify_admin(
-        context,
-        f"💳 *Payment Notification*\n\n"
-        f"Business: *{biz_name}* (ID: {biz_id})\n"
-        f"Plan: *{plan.capitalize()}*\n"
-        f"Amount: *{SUBSCRIPTION_MONTHLY if plan == 'monthly' else SUBSCRIPTION_YEARLY:,} ETB*\n\n"
-        "Verify payment and confirm:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Confirm Payment", callback_data=f"sub_confirm_{biz_id}_{plan}")],
-        ]),
-    )
 
 
 async def admin_confirm_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
