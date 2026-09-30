@@ -608,6 +608,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
   </div>
   <div class="sec-t" data-i="m_pay">Payments</div>
   <div class="card" id="chapaBalCard" hidden><div class="set-row" style="cursor:default"><div class="tx"><div class="t1" data-i="chapa_bal">Chapa received</div><div class="t2" data-i="chapa_bal_s">Settles directly to your Chapa account</div></div><div class="amt" id="chapaBal">—</div></div></div>
+  <div class="card"><div class="set-row"><div class="tx"><div class="t1" data-i="accept_orders">Accept orders</div><div class="t2" data-i="accept_orders_s">Required for invoices + online checkout</div></div><div class="tgl" id="ordTgl" onclick="toggleOrders()"></div></div></div>
   <div class="card"><label class="fl" data-i="bank">Bank name</label><input class="inp" id="bkN" maxlength="100">
     <label class="fl" data-i="acc_no">Account number</label><input class="inp" id="bkA" maxlength="100" inputmode="numeric">
     <label class="fl" data-i="acc_name">Account holder</label><input class="inp" id="bkH" maxlength="255">
@@ -673,7 +674,7 @@ pay_to:'Send payment to',receipt:'Payment receipt',up_t:'Tap to upload screensho
 m_biz:'Business',profile:'Store profile',share_store:'Share my store',share_s:'Link for customers',channel:'Sales channel',channel_s:'Auto-import from Telegram channel',
 channel_h:'1. Add the Ardi bot as admin to your channel<br>2. Forward any channel message to the bot<br>3. New photo posts with prices are saved as products automatically.',
 ai_reply:'AI auto-reply',tone:'Conversation tone',hours:'Business hours',hours_on:'Enable business hours',offline:'Offline message',
-bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',remove:'Remove',m_pay:'Payments',chapa_bal:'Chapa received',chapa_bal_s:'Settles directly to your Chapa account',chapa_key:'Chapa secret key (for customer checkouts)',chapa_key_s:'From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.',chapa_badkey:'Key must start with CHASECK-',chapa_rm_q:'Remove your Chapa key? Online checkout turns off.',chapa_on:'Online checkout is ON',chapa_off:'Online checkout is off',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
+bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',remove:'Remove',accept_orders:'Accept orders',accept_orders_s:'ለኢንቮይስ እና የመስመር ላይ ክፍያ ያስፈልጋል',orders_on:'Orders ON — invoices will be sent',orders_off:'Orders OFF',m_pay:'Payments',chapa_bal:'Chapa received',chapa_bal_s:'Settles directly to your Chapa account',chapa_key:'Chapa secret key (for customer checkouts)',chapa_key_s:'From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.',chapa_badkey:'Key must start with CHASECK-',chapa_rm_q:'Remove your Chapa key? Online checkout turns off.',chapa_on:'Online checkout is ON',chapa_off:'Online checkout is off',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
 tab_home:'Home',tab_cat:'Catalog',tab_ord:'Orders',tab_plan:'Plan',tab_more:'More',p_name:'Store name',p_phone:'Phone',p_addr:'Address',p_desc:'Description',
 products:'Products',orders:'Orders',revenue:'Revenue',pending:'Pending',in_stock:'In stock',out:'Out of stock',edit:'Edit product',add_p:'Add product',
 photo:'Photo',change:'Change',pname_ph:'e.g. Fresh Avocado',price_ph:'Price in ETB',save_p:'Save product',delete:'Delete product',cancel:'Cancel',
@@ -695,7 +696,7 @@ pay_to:'ክፍያ ይላኩ ወደ',receipt:'የክፍያ ደረሰኝ',up_t:'�
 m_biz:'ንግድ',profile:'የሱቅ መገለጫ',share_store:'ሱቄን አጋራ',share_s:'ለደንበኞች ሊንክ',channel:'የሽያጭ ቻናል',channel_s:'ከቴሌግራም ቻናል በራስ-ሰር',
 channel_h:'1. Ardi botን በቻናልዎ አድሚን ያድርጉ<br>2. ማንኛውንም የቻናል መልእክት ለbot ያስተላልፉ<br>3. አዳዲስ የምስል ልጥፎች በራስ-ሰር እንደ ምርት ይቀመጣሉ።',
 ai_reply:'AI በራስ-ሰር መልስ',tone:'የውይይት ዘይቤ',hours:'የስራ ሰዓት',hours_on:'የስራ ሰዓት አንቃ',offline:'ከስራ ሰዓት ውጪ መልእክት',
-bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',remove:'አስወግድ',m_pay:'ክፍያዎች',chapa_bal:'በChapa የገባ',chapa_bal_s:'ቀጥታ ወደ Chapa ሂሳብዎ ይገባል',chapa_key:'የChapa ሚስጥራዊ ቁልፍ (ለደንበኛ ክፍያ)',chapa_key_s:'ከdashboard.chapa.co። ገንዘቡ ቀጥታ ወደ Chapa ሂሳብዎ ይሄዳል — Ardi ገንዘብ አይይዝም።',chapa_badkey:'ቁልፉ በCHASECK- መጀመር አለበት',chapa_rm_q:'የChapa ቁልፍዎን ማስወገድ? የመስመር ላይ ክፍያ ይጠፋል።',chapa_on:'የመስመር ላይ ክፍያ በርቷል',chapa_off:'የመስመር ላይ ክፍያ ጠፍቷል',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
+bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',remove:'አስወግድ',accept_orders:'ትዕዛዞችን ተቀበል',accept_orders_s:'للانвойስ + የመስመር ላይ ክፍያ ያስፈልጋል'.replace('للانвойс ','ለ'),orders_on:'ትዕዛዞች በርተዋል — ኢንቮይስ ይላካል',orders_off:'ትዕዛዞች ጠፍተዋል',m_pay:'ክፍያዎች',chapa_bal:'በChapa የገባ',chapa_bal_s:'ቀጥታ ወደ Chapa ሂሳብዎ ይገባል',chapa_key:'የChapa ሚስጥራዊ ቁልፍ (ለደንበኛ ክፍያ)',chapa_key_s:'ከdashboard.chapa.co። ገንዘቡ ቀጥታ ወደ Chapa ሂሳብዎ ይሄዳል — Ardi ገንዘብ አይይዝም።',chapa_badkey:'ቁልፉ በCHASECK- መጀመር አለበት',chapa_rm_q:'የChapa ቁልፍዎን ማስወገድ? የመስመር ላይ ክፍያ ይጠፋል።',chapa_on:'የመስመር ላይ ክፍያ በርቷል',chapa_off:'የመስመር ላይ ክፍያ ጠፍቷል',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
 tab_home:'መነሻ',tab_cat:'ምርቶች',tab_ord:'ትዕዛዞች',tab_plan:'ፕላን',tab_more:'ተጨማሪ',p_name:'የሱቅ ስም',p_phone:'ስልክ',p_addr:'አድራሻ',p_desc:'መግለጫ',
 products:'ምርቶች',orders:'ትዕዛዞች',revenue:'ገቢ',pending:'በመጠባበቅ ላይ',in_stock:'በስቶክ ያለ',out:'ያለቀ',edit:'ምርት አርም',add_p:'ምርት ጨምር',
 photo:'ፎቶ',change:'ቀይር',pname_ph:'ለምሳሌ ትኩስ አቮካዶ',price_ph:'ዋጋ በኢቲቢ',save_p:'ምርቱን አስቀምጥ',delete:'ምርቱን ሰርዝ',cancel:'ሰርዝ',
@@ -971,6 +972,7 @@ async function loadMore(){
     $('hrsSum').textContent=s.business_hours_enabled?((s.business_hours_start||'?')+'–'+(s.business_hours_end||'?')):t('hours');
     $('offMsg').value=s.ai_offline_message||'';
     $('bkN').value=s.order_bank_name||''; $('bkA').value=s.order_bank_account||''; $('bkH').value=s.order_account_holder||'';
+    $('ordTgl').classList.toggle('on',!!s.orders_enabled);
     $('ckState').textContent=s.chapa_connected?t('chapa_on'):t('chapa_off');
     const _bc=$('chapaBalCard'); _bc.hidden=!(s.chapa_balance>0); $('chapaBal').textContent=fmtN(s.chapa_balance||0);
     $('planSum').textContent=s.subscription_status||'—';
@@ -999,6 +1001,7 @@ async function saveHrs(){
 }
 async function saveOff(){ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({ai_offline_message:$('offMsg').value})}); if(d&&d.success){toast(t('off_ok'),'ok');hap()} }
 async function saveBank(){ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({order_bank_name:$('bkN').value,order_bank_account:$('bkA').value,order_account_holder:$('bkH').value})}); if(d&&d.success){toast(t('bank_ok'),'ok');hap()} }
+async function toggleOrders(){ const on=!$('ordTgl').classList.contains('on'); const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({orders_enabled:on})}); if(d&&d.success){$('ordTgl').classList.toggle('on',on);toast(on?t('orders_on'):t('orders_off'),'ok');hap()} }
 async function saveChapa(){ const v=$('ckK').value.trim(); if(v&&!v.startsWith('CHASECK-')){toast(t('chapa_badkey'),'err');return} const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({chapa_secret_key:v})}); if(d&&d.success){toast(t('set_ok'),'ok');hap();$('ckK').value='';loadMore()} }
 async function clearChapa(){ confirmDlg(t('chapa_rm_q'),async()=>{ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({chapa_secret_key:''})}); if(d&&d.success){toast(t('set_ok'),'ok');hap();loadMore()} }); }
 
@@ -2009,6 +2012,7 @@ async def biz_settings(request: Request):
         "order_bank_name": b.order_bank_name,
         "order_bank_account": b.order_bank_account,
         "order_account_holder": b.order_account_holder,
+        "orders_enabled": b.orders_enabled,
         "chapa_connected": bool((b.chapa_secret_key or "").strip()),
         "chapa_balance": round(float(bal), 2),
         "subscription_status": b.subscription_status,
@@ -2132,7 +2136,7 @@ async def biz_update_settings(request: Request):
 
         async with async_session() as s:
             bb = await s.get(type(b), b.id)
-            for field in ("ai_tone", "business_hours_enabled", "business_hours_start", "business_hours_end", "ai_offline_message", "order_bank_name", "order_bank_account", "order_account_holder"):
+            for field in ("ai_tone", "business_hours_enabled", "business_hours_start", "business_hours_end", "ai_offline_message", "order_bank_name", "order_bank_account", "order_account_holder", "orders_enabled"):
                 if field in body:
                     setattr(bb, field, body[field])
             if "chapa_secret_key" in body:

@@ -1029,6 +1029,22 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         )
         history.append({"role": "assistant", "text": f"[Order #{order.id} placed: {items_text}]"})
         await _notify_new_order(context, business, order, update.effective_user)
+        if not (business.orders_enabled and business.order_bank_name and business.order_bank_account):
+            # No invoice was sent: order payments aren't configured. Nudge the owner.
+            try:
+                await context.bot.send_message(
+                    business.telegram_chat_id,
+                    "⚠️ *Order without payment setup*\n\n"
+                    f"Order #{order.id} was placed, but order payments aren't configured — "
+                    "the customer got no invoice.\n\n"
+                    "Fix it in the mini app → More → Payments:\n"
+                    "• Turn ON “Accept orders”\n"
+                    "• Fill bank name, account, holder → Save\n"
+                    "• Optional: add your Chapa key for instant online checkout",
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                logger.warning("Payment-setup nudge failed: %s", e)
 
     elif response.get("type") == "escalate":
         data = response.get("data", {})
