@@ -23,7 +23,8 @@ import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
 from bot.translations import _t, lang_kb
-from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TELEGRAM_ID, SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY, TRIAL_DAYS
+from config import RATE_LIMIT_CALLS, RATE_LIMIT_WINDOW, GEMINI_API_KEY, ADMIN_TELEGRAM_ID, TRIAL_DAYS
+from db.settings import get_plan_prices
 
 logger = logging.getLogger(__name__)
 
@@ -2130,14 +2131,26 @@ async def _import_channel_photo(business_id: int, photo, caption: str):
 
 
 async def handle_forwarded_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.forward_from_chat:
+    msg = update.message if update else None
+    if not msg:
         return
 
     chat_id = update.effective_chat.id
-    channel = update.message.forward_from_chat
+    is_forward = bool(getattr(msg, "forward_date", None) or getattr(msg, "forward_from_chat", None)
+                      or getattr(msg, "forward_origin", None) or getattr(msg, "forward_from", None))
 
-    if channel.type != "channel":
-        await update.message.reply_text("Please forward a message from a channel.")
+    # Channel source across Bot API generations (forward_from_chat pre-7.x, forward_origin 7.x+).
+    channel = getattr(msg, "forward_from_chat", None)
+    if channel is None:
+        origin = getattr(msg, "forward_origin", None)
+        channel = getattr(origin, "chat", None)
+    logger.info("forward received: chat=%s fwd=%s photo=%s channel=%s",
+                chat_id, is_forward, bool(msg.photo),
+                getattr(channel, "id", None) if channel else None)
+
+    if channel is None or getattr(channel, "type", None) != "channel":
+        if is_forward:
+            await update.message.reply_text("Please forward a message from a channel.")
         return
 
     async with async_session() as session:
@@ -2995,8 +3008,8 @@ async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"⚠️ *Subscription Expired*\n\n"
                 f"Your {sub['label']}. AI features are locked.\n\n"
-                f"• Monthly: {SUBSCRIPTION_MONTHLY:,} ETB\n"
-                f"• Yearly: {SUBSCRIPTION_YEARLY:,} ETB (2 months free)\n\n"
+                f"• Monthly: {(await get_plan_prices())['monthly']:,} ETB\n"
+                f"• Yearly: {(await get_plan_prices())['yearly']:,} ETB (2 months free)\n\n"
                 "Subscribe below to reactivate.",
                 parse_mode="Markdown",
                 reply_markup=kb,
@@ -3316,15 +3329,6 @@ async def _get_payment_methods() -> list:
     ]
 
 
-SUBSCRIPTION_INFO = (
-    "*Ardi AI — Subscription Plans*\n\n"
-    f"• Monthly: *{SUBSCRIPTION_MONTHLY:,} ETB* ({TRIAL_DAYS}-day trial)\n"
-    f"• Yearly: *{SUBSCRIPTION_YEARLY:,} ETB* (2 months free)\n\n"
-    "Payment: secure online checkout with Chapa (Telebirr, CBE, cards).\n"
-    "Your subscription activates automatically once paid."
-)
-
-
 def _get_subscription_status(business) -> dict:
     now = _utcnow()
     status = business.subscription_status or "trial"
@@ -3383,12 +3387,17 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prices = await get_plan_prices()
     await update.message.reply_text(
-        SUBSCRIPTION_INFO,
+        "*Ardi AI — Subscription Plans*\n\n"
+        f"• Monthly: *{prices['monthly']:,} ETB* ({TRIAL_DAYS}-day trial)\n"
+        f"• Yearly: *{prices['yearly']:,} ETB* (2 months free)\n\n"
+        "Payment: secure online checkout with Chapa (Telebirr, CBE, cards).\n"
+        "Your subscription activates automatically once paid.",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"Monthly — {SUBSCRIPTION_MONTHLY:,} ETB", callback_data="sub_monthly")],
-            [InlineKeyboardButton(f"Yearly — {SUBSCRIPTION_YEARLY:,} ETB", callback_data="sub_yearly")],
+            [InlineKeyboardButton(f"Monthly — {prices['monthly']:,} ETB", callback_data="sub_monthly")],
+            [InlineKeyboardButton(f"Yearly — {prices['yearly']:,} ETB", callback_data="sub_yearly")],
             [InlineKeyboardButton("🔙 Back", callback_data="main_menu")],
         ]),
     )
@@ -3401,7 +3410,7 @@ async def subscription_callback(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
 
     plan = "monthly" if data == "sub_monthly" else "yearly"
-    amount = SUBSCRIPTION_MONTHLY if data == "sub_monthly" else SUBSCRIPTION_YEARLY
+    amount = (await get_plan_prices())[plan]
 
     async with async_session() as session:
         business = await get_business(session, chat_id)
@@ -3447,12 +3456,13 @@ async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         business.subscription_plan = plan
         business.subscription_status = "awaiting_payment"
         await session.commit()
-        biz_id, amount = business.id, chapa.plan_amount(plan)
+        biz_id = business.id
+        amount = (await get_plan_prices())[plan]
 
     from config import MINI_APP_URL
     base = (_miniapp_base() or (MINI_APP_URL or "").strip().rstrip("/")) or "https://t.me"
     co = await chapa.create_checkout(
-        business, plan,
+        business, plan, amount,
         return_url=f"{base}/business",
         callback_url=f"{base}/api/chapa/webhook",
     )

@@ -35,8 +35,8 @@ try:
     ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 except (ValueError, TypeError):
     ADMIN_TELEGRAM_ID = 0
-SUBSCRIPTION_MONTHLY = 1200  # ETB
-SUBSCRIPTION_YEARLY = 12000  # ETB (2 months free)
+SUBSCRIPTION_MONTHLY = 1200  # ETB (default — admin can override in dashboard)
+SUBSCRIPTION_YEARLY = 12000  # ETB (2 months free; default — admin can override)
 TRIAL_DAYS = 7
 
 # Payment accounts (where users send money)

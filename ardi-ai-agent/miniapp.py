@@ -265,7 +265,7 @@ input,textarea,select,button{font-family:inherit}
 
 <div class="pg" id="pg-ord"><div class="hd"><div class="ht"><h1>Orders</h1><p id="oc">—</p></div></div><div class="mg" id="os"></div><div class="cd" id="ol"><div class="em">Loading...</div></div></div>
 
-<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">Payment Methods</div><div class="cd" id="pmc"><div class="em">Loading...</div></div><div class="sh">Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">Backup Database</button><button class="btn bdg" onclick="cr()">Revoke All Trials</button><button class="btn bs" onclick="lockout()">Sign Out</button></div>
+<div class="pg" id="pg-set"><div class="hd"><div class="ht"><h1>Settings</h1></div></div><div class="sh">System</div><div class="cd" id="shl"></div><div class="sh">Subscription Prices (ETB)</div><div class="cd" id="spc"><div class="em">Loading...</div></div><div class="sh">Payment Methods</div><div class="cd" id="pmc"><div class="em">Loading...</div></div><div class="sh">Broadcast</div><div class="cd"><div style="font-size:13px;color:var(--h);margin-bottom:10px">Message all business owners</div><textarea id="bm" class="txt" style="min-height:80px;margin-bottom:10px" placeholder="Type message..."></textarea><button class="btn bp" style="margin:0" onclick="sb()">Send to All</button><div id="bms" style="font-size:12px;color:var(--h);margin-top:8px;text-align:center"></div></div><div class="sh">Actions</div><button class="btn bp" onclick="bdb()">Backup Database</button><button class="btn bdg" onclick="cr()">Revoke All Trials</button><button class="btn bs" onclick="lockout()">Sign Out</button></div>
 
 <div class="pg" id="pg-dtl"><button class="bk" onclick="sp('dash')">← Back</button><div id="dc"></div></div>
 
@@ -308,8 +308,12 @@ $('ol').innerHTML=os.map(o=>`<div class="li" onclick="so(${o.id})"><div class="l
 
 async function lse(){const d=await ap('/api/admin/system');if(!d)return
 $('shl').innerHTML=`<div class="dl"><div class="rw"><span class="lb">Bot</span><span class="vl"><span class="st ${d.bot_online?'skk':'sx'}">${d.bot_online?'Online':'Offline'}</span></span></div><div class="rw"><span class="lb">Uptime</span><span class="vl">${es(d.uptime||'—')}</span></div><div class="rw"><span class="lb">DB</span><span class="vl">${es(d.database||'—')}</span></div><div class="rw"><span class="lb">Businesses</span><span class="vl">${d.businesses||0}</span></div><div class="rw"><span class="lb">Orders</span><span class="vl">${d.orders||0}</span></div><div class="rw"><span class="lb">Users</span><span class="vl">${d.users||0}</span></div></div>`
-// Load payment methods
-lpm()}
+// Load payment methods + subscription prices
+lpm();lsp()}
+async function lsp(){const d=await ap('/api/admin/subscription-prices');if(!d||!d.prices){$('spc').innerHTML='<div class="em">Unavailable</div>';return}
+const p=d.prices;
+$('spc').innerHTML=`<div style="margin-bottom:4px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Monthly (ETB)</div><input class="txt" id="spm" type="number" min="1" value="${es(String(p.monthly??''))}" style="padding:8px 10px;font-size:13px"></div><div style="margin-bottom:12px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Yearly (ETB)</div><input class="txt" id="spy" type="number" min="1" value="${es(String(p.yearly??''))}" style="padding:8px 10px;font-size:13px"></div><button class="btn bp" style="margin:0" onclick="spmSave2()">Save Prices</button><div style="font-size:11px;color:var(--h);margin-top:8px;text-align:center">Applies instantly to bot, mini app and Chapa checkouts.</div>`}
+async function spmSave2(){const m=parseInt($('spm').value,10),y=parseInt($('spy').value,10);if(!(m>0)||!(y>0)){tt('Enter valid prices','er');return}const d=await ap('/api/admin/subscription-prices',{method:'POST',body:JSON.stringify({monthly:m,yearly:y})});if(d&&d.success){tt('Prices saved','ok');lsp()}else{tt('Save failed','er')}}
 async function lpm(){const d=await ap('/api/admin/payment-methods');if(!d)return
 const ms=d.methods||[];if(!ms.length){$('pmc').innerHTML='<div class="em">No payment methods</div>';return}
 $('pmc').innerHTML=ms.map(m=>`<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.04)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:600;font-size:14px">${es(m.name==='cbe'?'🏦 CBE Birr':'📱 Telebirr')}</div><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--h);cursor:pointer"><input type="checkbox" ${m.is_active?'checked':''} onchange="spm(${m.id},'is_active',this.checked)" style="accent-color:var(--a)"> Active</label></div><div style="margin-bottom:4px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Bank Name</div><input class="txt" id="pmbn${m.id}" value="${es(m.bank_name||'')}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'bank_name',this.value)"></div><div style="margin-bottom:4px"><div style="font-size:11px;color:var(--h);margin-bottom:2px">Account Holder</div><input class="txt" id="pman${m.id}" value="${es(m.account_name)}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'account_name',this.value)"></div><div><div style="font-size:11px;color:var(--h);margin-bottom:2px">Account Number</div><input class="txt" id="pmanum${m.id}" value="${es(m.account_number)}" style="padding:8px 10px;font-size:13px" onchange="spm(${m.id},'account_number',this.value)"></div></div>`).join('')+'<button class="btn bp" style="margin:0" onclick="spmSave()">💾 Save Payment Methods</button>'}
@@ -891,10 +895,12 @@ async function setOrdStatus(id,st){
 }
 
 /* ── PLAN ── */
-const PLANS=[{id:'monthly',e:'cal',p:1200},{id:'yearly',e:'spark',p:12000}];
+let PLANS=[{id:'monthly',e:'cal',p:1200},{id:'yearly',e:'spark',p:12000}];
 async function loadPlan(){
   $('planHero').innerHTML=skel(1); $('planPick').innerHTML='';
   const d=await api('/api/business/subscription'); if(!d)return; S.sub=d;
+  const pr=d.prices||{monthly:1200,yearly:12000};
+  PLANS=PLANS.map(x=>({...x,p:pr[x.id]||x.p}));
   const st=d.status||'trial', days=d.days_left||0;
   const cls=st==='active'?'ok':(st==='expired'||st==='suspended')?'bad':'warn';
   const icon=st==='active'?'checkc':st==='trial'?'clock':st==='awaiting_payment'?'inbox':'lock';
@@ -902,13 +908,13 @@ async function loadPlan(){
   const sub=st==='active'&&days>0?`${days} ${t('days_left')}`:st==='trial'&&days>0?`${days} ${t('days_left')}`:t(st==='awaiting_payment'?'await_t':'exp_t');
   $('planHero').innerHTML=`<div class="hero ${cls}"><div class="e">${ic(icon,38)}</div><div class="t">${esc(title)}</div><div class="s">${esc(sub)}</div></div>`;
   $('planSum').textContent=title;
-  if(st==='active'){ $('planPick').innerHTML=''; return; }
+  if(st==='active'){ S.planSel=null; $('planPick').innerHTML=''; return; }
   if(st==='awaiting_payment'){
-    S.planSel=d.plan||d.selected||'monthly';
+    S.planSel=S.planSel||d.plan||d.selected||'monthly';
     $('planPick').innerHTML=`<div class="card" style="text-align:center;margin-bottom:12px">${t('await_t')}</div><button class="btn b-p" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`;
     return;
   }
-  S.planSel=d.selected||null;
+  S.planSel=S.planSel||d.selected||null;
   $('planPick').innerHTML=`<div class="sec-t">${t('choose_plan')}</div><div class="plans">${PLANS.map(p=>`
     <div class="plan ${S.planSel===p.id?'sel':''}" onclick="pickPlan('${p.id}')">${p.id==='yearly'?`<div class="bv">${t('best')}</div>`:''}
     <div class="e">${ic(p.e,26)}</div><div class="n">${t(p.id)}</div><div class="p">${p.p.toLocaleString()}<small> ETB${t('per_mo')}</small></div>
@@ -1046,8 +1052,9 @@ async def api_dashboard(request: Request):
                 bb = await s.get(Business, o.business_id)
                 ic_ = (await s.execute(select(func.count(OrderItem.id)).where(OrderItem.order_id == o.id))).scalar() or 0
                 ro.append({"id": o.id, "customer_name": o.customer_name, "business_name": bb.name if bb else "", "total_price": str(o.total_price), "status": o.status, "item_count": ic_, "created_at": o.created_at.isoformat() if o.created_at else ""})
-        from config import SUBSCRIPTION_MONTHLY
-        return {"bot_online": (time.monotonic() - bot_last_heartbeat) < HEARTBEAT_TIMEOUT, "businesses": biz, "active_subscriptions": act, "trial_count": tr, "users": usr, "orders_30d": o30, "pending_orders": pen, "sub_revenue": round(act * SUBSCRIPTION_MONTHLY, 2), "avg_order_value": round(float(avg), 2), "order_revenue_30d": round(float(rev), 2), "recent_orders": ro}
+        from db.settings import get_plan_prices
+        _mp = (await get_plan_prices())["monthly"]
+        return {"bot_online": (time.monotonic() - bot_last_heartbeat) < HEARTBEAT_TIMEOUT, "businesses": biz, "active_subscriptions": act, "trial_count": tr, "users": usr, "orders_30d": o30, "pending_orders": pen, "sub_revenue": round(act * _mp, 2), "avg_order_value": round(float(avg), 2), "order_revenue_30d": round(float(rev), 2), "recent_orders": ro}
     except Exception as e:
         return {"error": str(e)}
 
@@ -1392,6 +1399,42 @@ async def api_update_payment_method(request: Request):
         return {"error": str(e)}
 
 
+@app.get("/api/admin/subscription-prices")
+async def api_get_prices(request: Request):
+    await _require_admin(request)
+    try:
+        from db.settings import get_plan_prices
+        return {"prices": await get_plan_prices()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/subscription-prices")
+async def api_set_prices(request: Request):
+    await _require_admin(request)
+    try:
+        body = await request.json()
+        from db.settings import set_setting
+        out = {}
+        for key, field in (("plan.monthly", "monthly"), ("plan.yearly", "yearly")):
+            if field in body:
+                try:
+                    v = int(float(body[field]))
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail=f"Invalid {field} price")
+                if not 1 <= v <= 100_000_000:
+                    raise HTTPException(status_code=400, detail=f"{field} price out of range")
+                await set_setting(key, str(v))
+                out[field] = v
+        if not out:
+            raise HTTPException(status_code=400, detail="Nothing to update")
+        return {"success": True, "prices": out}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ═══════════════════════════════════════════════════════════════
 # BUSINESS OWNER API ENDPOINTS
 # ═══════════════════════════════════════════════════════════════
@@ -1652,8 +1695,10 @@ async def biz_subscription(request: Request):
     biz_data = await _require_business(request)
     b = biz_data["business"]
     from bot.handlers import _get_subscription_status, _get_payment_methods
+    from db.settings import get_plan_prices
     sub = _get_subscription_status(b)
     methods = await _get_payment_methods()
+    prices = await get_plan_prices()
     return {
         "status": b.subscription_status or "trial",
         "plan": b.subscription_plan or None,
@@ -1661,6 +1706,7 @@ async def biz_subscription(request: Request):
         "days_left": sub.get("days_left", 0),
         "label": sub.get("label", ""),
         "selected": b.subscription_plan,
+        "prices": prices,
         "payment_methods": [{"name": m.name, "bank_name": m.bank_name, "account_name": m.account_name, "account_number": m.account_number} for m in methods if m.is_active],
     }
 
@@ -1672,13 +1718,15 @@ async def biz_chapa_pay(request: Request):
     b = biz_data["business"]
     try:
         import chapa
-        from chapa import plan_amount
         if not chapa.chapa_configured():
             raise HTTPException(status_code=503, detail="Chapa payments not configured")
         body = await request.json()
         plan = body.get("plan") or b.subscription_plan or "monthly"
         if plan not in ("monthly", "yearly"):
             raise HTTPException(status_code=400, detail="Invalid plan")
+        from db.settings import get_plan_prices
+        prices = await get_plan_prices()
+        amount = prices[plan]
         from db.database import async_session
         from db.models import Business, SubscriptionPayment
         from decimal import Decimal
@@ -1689,7 +1737,7 @@ async def biz_chapa_pay(request: Request):
             bb.subscription_plan = plan
             bb.subscription_status = "awaiting_payment"
             co = await chapa.create_checkout(
-                bb, plan,
+                bb, plan, amount,
                 return_url=f"{base}/business",
                 callback_url=f"{base}/api/chapa/webhook",
             )
@@ -1697,7 +1745,7 @@ async def biz_chapa_pay(request: Request):
                 raise HTTPException(status_code=502, detail="Could not start Chapa checkout")
             pay = SubscriptionPayment(
                 business_id=bb.id, plan=plan,
-                amount=Decimal(plan_amount(plan)),
+                amount=Decimal(amount),
                 tx_ref=co["tx_ref"], checkout_url=co["checkout_url"],
             )
             s.add(pay)

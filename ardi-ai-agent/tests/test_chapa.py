@@ -8,18 +8,33 @@ os.environ.setdefault("TELEGRAM_TOKEN", "123:fake")
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 
 import chapa
+from db.settings import get_plan_prices, set_setting
 
 
-class TestPlanAmount:
-    def test_monthly(self):
-        assert chapa.plan_amount("monthly") == 1200
+class TestPlanPrices:
+    async def test_defaults(self):
+        prices = await get_plan_prices()
+        assert prices["monthly"] >= 1
+        assert prices["yearly"] >= 1
 
-    def test_yearly(self):
-        assert chapa.plan_amount("yearly") == 12000
+    async def test_admin_override_roundtrip(self):
+        await set_setting("plan.monthly", "1500")
+        try:
+            prices = await get_plan_prices()
+            assert prices["monthly"] == 1500
+        finally:
+            await set_setting("plan.monthly", "1200")
 
-    def test_invalid(self):
-        assert chapa.plan_amount("weekly") is None
-        assert chapa.plan_amount("") is None
+    async def test_bad_value_falls_back(self, monkeypatch):
+        import db.settings as st
+        from config import SUBSCRIPTION_MONTHLY
+
+        async def fake_get(key, default=""):
+            return "not-a-number"
+
+        monkeypatch.setattr(st, "get_setting", fake_get)
+        prices = await get_plan_prices()
+        assert prices["monthly"] == SUBSCRIPTION_MONTHLY
 
 
 class TestTxRef:

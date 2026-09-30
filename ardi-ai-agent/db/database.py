@@ -166,3 +166,17 @@ async def init_db():
             except Exception as e:
                 await seed_session.rollback()
                 logger.warning("Payment method seed skipped: %s", e)
+
+    # Seed default subscription prices (admin can change them later; never overwrites)
+    from db.models import AppSetting
+    async with async_session() as seed_session:
+        try:
+            from config import SUBSCRIPTION_MONTHLY, SUBSCRIPTION_YEARLY
+            for key, val in (("plan.monthly", str(SUBSCRIPTION_MONTHLY)),
+                             ("plan.yearly", str(SUBSCRIPTION_YEARLY))):
+                if await seed_session.get(AppSetting, key) is None:
+                    seed_session.add(AppSetting(key=key, value=val))
+            await seed_session.commit()
+        except Exception as e:
+            await seed_session.rollback()
+            logger.warning("Price seed skipped: %s", e)

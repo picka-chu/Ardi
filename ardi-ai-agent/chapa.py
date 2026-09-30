@@ -10,11 +10,7 @@ import time
 
 import httpx
 
-from config import (
-    CHAPA_SECRET_KEY,
-    SUBSCRIPTION_MONTHLY,
-    SUBSCRIPTION_YEARLY,
-)
+from config import CHAPA_SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +21,6 @@ REQUEST_TIMEOUT = 20
 
 def chapa_configured() -> bool:
     return bool(CHAPA_SECRET_KEY)
-
-
-def plan_amount(plan: str) -> int | None:
-    if plan == "monthly":
-        return SUBSCRIPTION_MONTHLY
-    if plan == "yearly":
-        return SUBSCRIPTION_YEARLY
-    return None
 
 
 def make_tx_ref(business_id: int, plan: str) -> str:
@@ -65,10 +53,9 @@ def parse_verify_response(data: dict) -> dict:
     }
 
 
-async def create_checkout(business, plan: str, return_url: str, callback_url: str) -> dict | None:
-    """Create a Chapa transaction. Returns {checkout_url, tx_ref} or None."""
-    amount = plan_amount(plan)
-    if amount is None or not chapa_configured():
+async def create_checkout(business, plan: str, amount: int, return_url: str, callback_url: str) -> dict | None:
+    """Create a Chapa checkout. Amount comes from admin-set prices. Returns {checkout_url, tx_ref} or None."""
+    if plan not in ("monthly", "yearly") or not amount or not chapa_configured():
         return None
     tx_ref = make_tx_ref(business.id, plan)
     name = (business.name or "Business").strip() or "Business"
