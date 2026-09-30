@@ -14,6 +14,11 @@ from config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
+# google-genai logs a "don't use AFC in generate_content" warning on every call.
+# We don't use function calling at all — silence that logger's warnings; real
+# failures are logged by us at each call site.
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
+
 _client = None
 _client_lock = threading.Lock()
 

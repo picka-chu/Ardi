@@ -2447,6 +2447,116 @@ async def _transcribe_business_voice(context, connection_id: str, customer_chat_
     return transcript
 
 
+async def handle_business_photo(context, connection_id: str, customer_chat_id: int, message) -> None:
+    """Customer sent a photo first in a Business chat: match catalog + reply.
+
+    Mirrors the direct-chat photo flow, replying through the business connection.
+    """
+    global _business_chat_histories
+    logger.info("Business photo message from customer %s on connection %s", customer_chat_id, connection_id)
+
+    async def _send(text: str):
+        await context.bot.send_message(chat_id=customer_chat_id, text=text,
+                                       parse_mode="Markdown",
+                                       business_connection_id=connection_id)
+
+    async with async_session() as session:
+        conn_model = (await session.execute(
+            select(BusinessConnectionModel).where(
+                BusinessConnectionModel.connection_id == connection_id)
+        )).scalar_one_or_none()
+        if not conn_model:
+            logger.warning(f"Unknown business connection: {connection_id}")
+            return
+        business = await session.get(Business, conn_model.business_id)
+        if not business:
+            logger.warning(f"Business not found for connection: {connection_id}")
+            return
+        if not business.ai_active:
+            logger.info(f"Ardi AI is OFF for {business.name}")
+            return
+        if not _is_within_business_hours(business):
+            try:
+                await _send(business.ai_offline_message or BUSINESS_HOURS_WARNING)
+            except Exception as e:
+                logger.error("Offline message send error: %s", e)
+            return
+        products = (await session.execute(
+            select(Product).where(Product.business_id == business.id)
+        )).scalars().all()
+
+    if not products:
+        try:
+            await _send("This business has no products listed yet.")
+        except Exception as e:
+            logger.error("Business message send error: %s", e)
+        return
+
+    chat_key = f"{connection_id}_{customer_chat_id}"
+    history = _business_chat_histories.get(chat_key, [])
+
+    photo = message.photo[-1]
+    for p in products:
+        if p.photo_file_id == photo.file_id:
+            history.append({"role": "user", "text": f"[sent photo of {p.name}]"})
+            history.append({"role": "assistant",
+                            "text": f"[Matched {p.name} by photo]"})
+            _business_chat_histories[chat_key] = history[-20:]
+            try:
+                await _send(f"I see you're interested in *{p.name}*! "
+                            f"{f'It is {p.price:.0f} ETB.' if p.price else ''} "
+                            f"Would you like to order it?")
+            except Exception as e:
+                logger.error("Business message send error: %s", e)
+            return
+
+    try:
+        await _send("📸 Analyzing your photo...")
+    except Exception:
+        pass
+    try:
+        file = await photo.get_file()
+        image_bytes = bytes(await file.download_as_bytearray())
+    except Exception as e:
+        logger.warning("Business photo download failed (conn=%s): %s", connection_id, e)
+        return
+
+    caption = await generate_caption(image_bytes)
+    if not caption:
+        history.append({"role": "user", "text": "[sent a photo]"})
+        _business_chat_histories[chat_key] = history[-20:]
+        try:
+            await _send("I couldn't identify that photo. Could you describe what you're looking for?")
+        except Exception as e:
+            logger.error("Business message send error: %s", e)
+        return
+
+    embedding = await embed_text(caption)
+    loop = asyncio.get_running_loop()
+    matches = await loop.run_in_executor(None, find_best_match_sync, caption, embedding, list(products))
+
+    if matches:
+        best = matches[0]
+        p = best["product"]
+        sim_pct = int(best["similarity"] * 100)
+        history.append({"role": "user", "text": f"[sent photo matched to {p.name} ({sim_pct}%)]"})
+        reply = (f"I found *{p.name}* ({sim_pct}% match)! "
+                 f"{f'Price: {p.price:.0f} ETB.' if p.price else ''} "
+                 f"Would you like to order it?")
+    else:
+        history.append({"role": "user", "text": f"[sent photo: {caption[:80]}]"})
+        reply = (f"I couldn't find an exact match. Are you looking for something like: {caption}? "
+                 "Let me know what you need!")
+    history.append({"role": "assistant", "text": reply[:200]})
+    if len(_business_chat_histories) >= BUSINESS_CHAT_HISTORIES_MAX:
+        _business_chat_histories.pop(next(iter(_business_chat_histories)))
+    _business_chat_histories[chat_key] = history[-20:]
+    try:
+        await _send(reply)
+    except Exception as e:
+        logger.error("Business message send error: %s", e)
+
+
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _business_chat_histories
     message = update.business_message
@@ -2459,9 +2569,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if message.text:
         customer_text = message.text
     elif message.photo:
-        logger.info("Business photo message from customer %s on connection %s — photo receipts in business chats are not supported yet; ask for text",
-                    customer_chat_id, connection_id)
-        return
+        return await handle_business_photo(context, connection_id, customer_chat_id, message)
     elif message.voice:
         customer_text = await _transcribe_business_voice(context, connection_id, customer_chat_id, message.voice)
         if not customer_text:
