@@ -40,11 +40,15 @@ class TestPlanPrices:
 class TestTxRef:
     def test_format(self):
         ref = chapa.make_tx_ref(42, "monthly")
-        assert ref.startswith("ardi-sub-42-monthly-")
+        assert ref.startswith("ardi-monthly-42-")
         assert len(ref) < 64  # fits Telegram callback_data if ever needed
 
     def test_unique(self):
         assert chapa.make_tx_ref(1, "monthly") != chapa.make_tx_ref(1, "monthly")
+
+    def test_label_sanitized(self):
+        ref = chapa.make_tx_ref(1, "a/b c")
+        assert "/" not in ref and " " not in ref
 
 
 class TestParseVerify:

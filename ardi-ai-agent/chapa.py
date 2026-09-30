@@ -23,14 +23,15 @@ def chapa_configured() -> bool:
     return bool(CHAPA_SECRET_KEY)
 
 
-def make_tx_ref(business_id: int, plan: str) -> str:
-    """Unique merchant reference: ardi-sub-<biz>-<plan>-<time>-<rand>."""
+def make_tx_ref(business_id: int, label: str) -> str:
+    """Unique merchant reference: ardi-<label>-<biz>-<time>-<rand>."""
     rand = secrets.token_hex(3)
-    return f"ardi-sub-{int(business_id)}-{plan}-{int(time.time())}-{rand}"
+    safe = "".join(c if c.isalnum() else "-" for c in str(label))[:20] or "pay"
+    return f"ardi-{safe}-{int(business_id)}-{int(time.time())}-{rand}"
 
 
-def _headers() -> dict:
-    return {"Authorization": f"Bearer {CHAPA_SECRET_KEY}"}
+def _headers(secret: str | None = None) -> dict:
+    return {"Authorization": f"Bearer {secret or CHAPA_SECRET_KEY}"}
 
 
 def parse_verify_response(data: dict) -> dict:
@@ -53,11 +54,16 @@ def parse_verify_response(data: dict) -> dict:
     }
 
 
-async def create_checkout(business, plan: str, amount: int, return_url: str, callback_url: str) -> dict | None:
-    """Create a Chapa checkout. Amount comes from admin-set prices. Returns {checkout_url, tx_ref} or None."""
-    if plan not in ("monthly", "yearly") or not amount or not chapa_configured():
+async def create_checkout(business, plan: str, amount: int, return_url: str, callback_url: str, secret: str | None = None, ref_prefix: str = "sub") -> dict | None:
+    """Create a Chapa checkout. Amount comes from admin-set prices (subscriptions)
+    or the invoice total (orders, with the business's own key).
+
+    Returns {checkout_url, tx_ref} or None.
+    """
+    key = secret or CHAPA_SECRET_KEY
+    if plan not in ("monthly", "yearly", "order") or not amount or not key:
         return None
-    tx_ref = make_tx_ref(business.id, plan)
+    tx_ref = make_tx_ref(business.id, ref_prefix if plan == "order" else plan)
     name = (business.name or "Business").strip() or "Business"
     # Chapa requires a valid email (we don't collect owner emails; receipts live in-app).
     email = f"ardi-biz-{int(business.id)}@gmail.com"
@@ -72,11 +78,12 @@ async def create_checkout(business, plan: str, amount: int, return_url: str, cal
         "callback_url": callback_url,
         "return_url": return_url,
         # NOTE: Chapa caps customization.title at 16 chars.
-        "customization": {"title": "Ardi AI Plan", "description": f"{plan.capitalize()} plan"},
+        "customization": {"title": "Ardi AI Plan" if plan != "order" else "Ardi Order Pay",
+                          "description": f"{plan.capitalize()} plan" if plan != "order" else "Order payment"},
     }
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-            r = await client.post(CHAPA_INIT_URL, json=payload, headers=_headers())
+            r = await client.post(CHAPA_INIT_URL, json=payload, headers=_headers(key))
             body = r.json()
     except Exception as e:
         logger.error("Chapa initialize failed: %s", e)
@@ -88,13 +95,17 @@ async def create_checkout(business, plan: str, amount: int, return_url: str, cal
     return {"checkout_url": checkout, "tx_ref": tx_ref}
 
 
-async def verify_payment(tx_ref: str) -> dict:
-    """Server-side verify. Returns {paid, amount, chapa_ref} (paid False on any error)."""
-    if not tx_ref or not chapa_configured():
+async def verify_payment(tx_ref: str, secret: str | None = None) -> dict:
+    """Server-side verify. Pass a business key for order checkouts.
+
+    Returns {paid, amount, chapa_ref} (paid False on any error).
+    """
+    key = secret or CHAPA_SECRET_KEY
+    if not tx_ref or not key:
         return {"paid": False}
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-            r = await client.get(f"{CHAPA_VERIFY_URL}/{tx_ref}", headers=_headers())
+            r = await client.get(f"{CHAPA_VERIFY_URL}/{tx_ref}", headers=_headers(key))
             body = r.json()
     except Exception as e:
         logger.error("Chapa verify failed: %s", e)

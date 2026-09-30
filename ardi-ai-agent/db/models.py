@@ -35,6 +35,9 @@ class Business(Base):
     order_bank_name: Mapped[str] = mapped_column(String(100), nullable=True)
     order_bank_account: Mapped[str] = mapped_column(String(100), nullable=True)
     order_account_holder: Mapped[str] = mapped_column(String(255), nullable=True)
+    # Business-owned Chapa key for customer order checkouts (money settles
+    # directly to the business's Chapa account — Ardi never holds funds).
+    chapa_secret_key: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     products: Mapped[list["Product"]] = relationship("Product", back_populates="business", cascade="all, delete-orphan")
@@ -160,4 +163,20 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class OrderPayment(Base):
+    """Customer order checkouts via the business's own Chapa key."""
+    __tablename__ = "order_payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    tx_ref: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    checkout_url: Mapped[str] = mapped_column(Text, nullable=True)
+    chapa_ref: Mapped[str] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/paid/failed
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

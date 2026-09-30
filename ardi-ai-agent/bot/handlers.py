@@ -19,6 +19,7 @@ from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
+from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError
 import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
@@ -801,7 +802,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
     state = context.user_data.get("state", "")
     if state == "awaiting_order_payment":
         await update.message.reply_text(
-            "Please send a photo of your payment receipt so I can verify it."
+            "Please send your receipt (photo, PDF, or link) so I can verify it."
         )
         return
 
@@ -823,10 +824,13 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
     if not context.user_data.get("customer_chat_active"):
         return
 
-    # Don't process text messages during payment wait
+    # Don't process text messages during payment wait — except receipt links
     if context.user_data.get("state") == "awaiting_order_payment":
+        link = looks_like_url(update.message.text) if context.user_data.get("pending_order") else None
+        if link:
+            return await handle_receipt_link(update, context, link)
         await update.message.reply_text(
-            "Please send a screenshot of your payment receipt so I can confirm your order."
+            "Please send your receipt — a photo, PDF, or link — so I can confirm your order."
         )
         return
 
@@ -936,32 +940,78 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
 
         if business.orders_enabled and business.order_bank_name and business.order_bank_account:
             total = Decimal("0.00")
+            lines = []
             for item in data.get("items", []):
                 pname = item.get("product", "")
                 qty = int(item.get("quantity", 1))
                 for p in products:
                     if p.name.lower() == pname.lower():
-                        total += _money(p.price) * qty
+                        line_total = _money(p.price) * qty
+                        total += line_total
+                        lines.append(f"• {pname} × {qty} — {line_total:.2f} ETB")
                         break
+            ref = f"INV-{business.id}-{int(time.time()) % 1000000:06d}"
             context.user_data["pending_order"] = {
                 "business_id": business.id,
                 "data": data,
                 "total": total,
+                "ref": ref,
             }
             context.user_data["state"] = "awaiting_order_payment"
+
+            # Instant option: business-owned Chapa checkout (money settles
+            # directly to the business's Chapa account).
+            chapa_url = None
+            biz_key = (business.chapa_secret_key or "").strip()
+            if biz_key.startswith("CHASECK-"):
+                try:
+                    pre_order = await _create_order(business, update.effective_user, data, products)
+                    async with async_session() as _s:
+                        _o = await _s.get(Order, pre_order.id)
+                        _o.status = "awaiting_payment"
+                        await _s.commit()
+                    from config import MINI_APP_URL as _MURL
+                    _base = (_miniapp_base() or (_MURL or "").strip().rstrip("/")) or "https://t.me"
+                    _co = await chapa.create_checkout(
+                        business, "order", float(total),
+                        return_url=f"{_base}/pay/done",
+                        callback_url=f"{_base}/api/chapa/webhook",
+                        secret=biz_key,
+                    )
+                    if _co:
+                        from db.models import OrderPayment
+                        async with async_session() as _s2:
+                            _s2.add(OrderPayment(
+                                order_id=pre_order.id, business_id=business.id,
+                                amount=total, tx_ref=_co["tx_ref"],
+                                checkout_url=_co["checkout_url"],
+                            ))
+                            await _s2.commit()
+                        chapa_url = _co["checkout_url"]
+                        context.user_data["pending_order"]["order_id"] = pre_order.id
+                        context.user_data["pending_order"]["chapa_tx"] = _co["tx_ref"]
+                except Exception as e:
+                    logger.warning("Order Chapa checkout failed, bank-only invoice: %s", e)
+
+            pay_rows = []
+            if chapa_url:
+                pay_rows.append([InlineKeyboardButton("💳 Pay Online with Chapa", url=chapa_url)])
+            pay_rows.append([InlineKeyboardButton("✅ I've Paid — Send Receipt", callback_data="ord_paid")])
             await update.message.reply_text(
                 f"{reply_text}\n\n"
-                f"💳 *Payment Required*\n\n"
-                f"Total: *{total:.2f} ETB*\n\n"
+                f"🧾 *Invoice {ref}*\n"
+                + "\n".join(lines) + "\n"
+                f"*Total: {total:.2f} ETB*\n\n"
                 f"Send payment to:\n"
                 f"🏦 {business.order_bank_name}\n"
                 f"Account: `{business.order_bank_account}`\n"
                 f"Name: {business.order_account_holder or business.order_bank_name}\n\n"
-                f"After paying, send a screenshot of the receipt here.\n"
-                f"I'll verify and confirm your order!",
+                f"Then tap *I've Paid* and send your receipt "
+                f"(photo, PDF, or link) — I'll verify it automatically!",
                 parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(pay_rows),
             )
-            history.append({"role": "assistant", "text": f"[Awaiting payment: {total:.2f} ETB]"})
+            history.append({"role": "assistant", "text": f"[Invoice {ref} sent: {total:.2f} ETB, awaiting payment]"})
             context.user_data["customer_chat_history"] = history[-20:]
             return
 
@@ -3000,6 +3050,10 @@ async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if business:
         sub = _get_subscription_status(business)
         if not sub["active"]:
+            if business.subscription_status == "awaiting_payment":
+                # Paid via Chapa but webhook missed? Settle silently on any message.
+                if await _auto_settle_subscription(context, business):
+                    return
             kb = None
             if _miniapp_base():
                 kb = InlineKeyboardMarkup([
@@ -3463,7 +3517,7 @@ async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     base = (_miniapp_base() or (MINI_APP_URL or "").strip().rstrip("/")) or "https://t.me"
     co = await chapa.create_checkout(
         business, plan, amount,
-        return_url=f"{base}/business",
+        return_url=f"{base}/pay/done",
         callback_url=f"{base}/api/chapa/webhook",
     )
     if not co:
@@ -3478,19 +3532,15 @@ async def chapa_pay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             tx_ref=co["tx_ref"], checkout_url=co["checkout_url"],
         ))
         await session.commit()
-        pay_id = (await session.execute(
-            select(SubscriptionPayment).where(SubscriptionPayment.tx_ref == co["tx_ref"])
-        )).scalar_one().id
 
     await query.edit_message_text(
         f"💳 *Pay {amount:,} ETB with Chapa*\n\n"
         f"Plan: *{plan.capitalize()}*\n\n"
-        "Tap below to pay securely (Telebirr, CBE, cards). "
-        "Your subscription activates automatically once paid.",
+        "Tap below to pay securely (Telebirr, CBE, cards).\n"
+        "Once paid, your subscription activates automatically — no further tap needed.",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Open Chapa Checkout", url=co["checkout_url"])],
-            [InlineKeyboardButton("✅ I've Paid — Verify", callback_data=f"sub_chapacheck_{pay_id}")],
         ]),
     )
 
@@ -3601,13 +3651,273 @@ async def _activate_subscription(context, biz_id: int, plan: str, chat_id: int =
     return True
 
 
+async def _auto_settle_subscription(context, business) -> bool:
+    """Webhook safety net: if the owner paid via Chapa but no webhook arrived,
+    any message they send settles their latest pending payment automatically."""
+    try:
+        from db.models import SubscriptionPayment
+        async with async_session() as session:
+            row = (await session.execute(
+                select(SubscriptionPayment)
+                .where(SubscriptionPayment.business_id == business.id,
+                       SubscriptionPayment.status == "pending")
+                .order_by(SubscriptionPayment.id.desc()).limit(1)
+            )).scalar_one_or_none()
+            if not row:
+                return False
+            pay_id, tx_ref, plan, biz_id = row.id, row.tx_ref, row.plan, row.business_id
+        verdict = await chapa.verify_payment(tx_ref)
+        if not verdict.get("paid"):
+            return False
+        async with async_session() as session:
+            pay = await session.get(SubscriptionPayment, pay_id)
+            if pay and pay.status != "paid":
+                pay.status = "paid"
+                pay.chapa_ref = (verdict.get("chapa_ref") or "")[:100]
+                await session.commit()
+        ok = await _activate_subscription(context, biz_id, plan)
+        if ok:
+            logger.info("Auto-settled subscription: business=%s plan=%s", biz_id, plan)
+        return ok
+    except Exception as e:
+        logger.warning("Auto-settle failed: %s", e)
+        return False
+
+
 def _amount_sufficient(paid: float, required: float) -> bool:
     return paid >= required - 1.0  # allow 1 ETB tolerance for OCR rounding
 
 
+def _match_order_receipt(biz, amount_needed, got_amount, got_account, got_name) -> tuple:
+    """Match a receipt (photo OCR, PDF text, or link) against the invoice.
+
+    Returns (ok, issues). Empty expected account/name never matches.
+    """
+    try:
+        need = float(amount_needed or 0)
+    except (ValueError, TypeError):
+        need = 0.0
+    try:
+        got = float(got_amount or 0)
+    except (ValueError, TypeError):
+        got = 0.0
+    expected_account = (biz.order_bank_account or "").replace(" ", "")
+    expected_name = (biz.order_account_holder or "").strip().lower()
+    got_account = str(got_account or "").replace(" ", "")
+    got_name = str(got_name or "").strip().lower()
+    amount_ok = _amount_sufficient(got, need)
+    account_ok = (bool(expected_account) and expected_account in got_account) or \
+                 (bool(expected_name) and expected_name in got_name)
+    issues = []
+    if not amount_ok:
+        issues.append(f"• Expected at least *{need:.2f} ETB*, found *{got:.2f} ETB*")
+    if not account_ok:
+        issues.append("• Receiver account doesn't match the business's account")
+    return (amount_ok and account_ok), issues
+
+
+async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, receipt_ref, order_id=None):
+    """Confirm payment: reuse the pre-created invoice order when present,
+    otherwise create it. Clears payment state, notifies customer + owner."""
+    order = None
+    if order_id:
+        async with async_session() as session:
+            order = await session.get(Order, order_id)
+            if order and order.business_id == biz.id and order.status in ("awaiting_payment", "review"):
+                order.status = "pending"
+                await session.commit()
+            else:
+                order = None
+    if order is None:
+        async with async_session() as session:
+            products_result = await session.execute(
+                select(Product).where(Product.business_id == biz.id)
+            )
+            products = products_result.scalars().all()
+        order = await _create_order(biz, update.effective_user, order_data, products)
+    items_text = ", ".join(
+        f"{i.get('product','')} × {i.get('quantity',1)}"
+        for i in (order_data.get("items", [order_data]))
+    )
+    context.user_data.pop("state", None)
+    context.user_data.pop("pending_order", None)
+    await update.message.reply_text(
+        f"✅ *Payment Verified!*\n\n"
+        f"Amount: *{float(receipt_amount or 0):.2f} ETB*\n"
+        f"Ref: {receipt_ref or 'N/A'}\n\n"
+        f"✅ *Order Confirmed!*\n"
+        f"• {items_text}\n"
+        f"• Name: {order_data.get('customer_name', '')}\n"
+        f"• Phone: {order_data.get('customer_phone', '')}\n"
+        f"• Address: {order_data.get('customer_address', '')}\n\n"
+        f"The business will prepare your order.",
+        parse_mode="Markdown",
+    )
+    await _notify_new_order(context, biz, order, update.effective_user)
+    history = context.user_data.get("customer_chat_history", [])
+    history.append({"role": "assistant", "text": f"[Order #{order.id} confirmed with payment: {items_text}]"})
+    context.user_data["customer_chat_history"] = history[-20:]
+    return order
+
+
+async def ord_paid_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Customer tapped 'I've Paid' — ask for the receipt (photo, PDF, or link)."""
+    query = update.callback_query
+    await query.answer()
+    pending = context.user_data.get("pending_order")
+    if not pending or context.user_data.get("state") != "awaiting_order_payment":
+        await query.edit_message_text(
+            "I don't have a pending invoice for you. Send me what you'd like to order first!"
+        )
+        return
+    await query.edit_message_text(
+        f"Great! Send your receipt for *{pending.get('total', 0):.2f} ETB* "
+        f"(invoice `{pending.get('ref', '')}`) — a clear *photo*, a *PDF*, or a *link* to it.",
+        parse_mode="Markdown",
+    )
+
+
+async def handle_receipt_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify a PDF receipt (text-extracted) against the pending invoice."""
+    from receipts import MAX_RECEIPT_BYTES
+    doc = update.message.document
+    pending = context.user_data.get("pending_order")
+    if not pending or context.user_data.get("state") != "awaiting_order_payment":
+        await update.message.reply_text(
+            "I don't have a pending invoice for you. Tell me what you'd like to order first!"
+        )
+        return
+    if doc.file_size and doc.file_size > MAX_RECEIPT_BYTES:
+        await update.message.reply_text("That PDF is too large (max 6 MB). Send a photo instead.")
+        return
+
+    await update.message.reply_text("📄 Reading your receipt...")
+    try:
+        file = await doc.get_file()
+        raw = await file.download_as_bytearray()
+        pdf_bytes = bytes(raw)
+        if len(pdf_bytes) > MAX_RECEIPT_BYTES:
+            await update.message.reply_text("That PDF is too large (max 6 MB). Send a photo instead.")
+            return
+    except Exception as e:
+        logger.warning("PDF download failed: %s", e)
+        await update.message.reply_text("Couldn't download that PDF. Try a photo instead.")
+        return
+
+    async with async_session() as session:
+        biz = await session.execute(select(Business).where(Business.id == pending["business_id"]))
+        biz = biz.scalar_one_or_none()
+    if not biz:
+        await update.message.reply_text("The business is no longer available.")
+        context.user_data.pop("state", None)
+        context.user_data.pop("pending_order", None)
+        return
+
+    verdict = verify_pdf_receipt(pdf_bytes, biz.order_bank_account, biz.order_account_holder,
+                                 pending["total"])
+    if verdict["ok"]:
+        await _confirm_paid_order(update, context, biz, pending["data"],
+                                  verdict["amount"], "PDF receipt",
+                                  pending.get("order_id"))
+        return
+
+    # Inconclusive — create a review order so the owner can confirm manually.
+    async with async_session() as session:
+        products = (await session.execute(
+            select(Product).where(Product.business_id == biz.id))).scalars().all()
+    order = await _create_order(biz, update.effective_user, pending["data"], products)
+    async with async_session() as session:
+        o = await session.get(Order, order.id)
+        o.status = "review"
+        await session.commit()
+    context.user_data.pop("state", None)
+    context.user_data.pop("pending_order", None)
+    await update.message.reply_text(
+        f"🔍 I couldn't fully verify that receipt ({verdict.get('reason', 'unclear')}).\n\n"
+        f"Your order *#{order.id}* is saved and sent to the business for review — "
+        "they'll confirm it shortly.",
+        parse_mode="Markdown",
+    )
+    history = context.user_data.get("customer_chat_history", [])
+    history.append({"role": "assistant", "text": f"[Order #{order.id} awaiting owner review: {verdict.get('reason', '')}]"})
+    context.user_data["customer_chat_history"] = history[-20:]
+    try:
+        await context.bot.send_message(
+            biz.telegram_chat_id,
+            f"🔍 *Receipt needs review — Order #{order.id}*\n\n"
+            f"Customer: {pending['data'].get('customer_name', '')}\n"
+            f"Phone: {pending['data'].get('customer_phone', '')}\n"
+            f"Total: *{float(pending['total']):.2f} ETB*\n"
+            f"Check: {verdict.get('reason', 'unclear')}\n\n"
+            "Confirm it from /orders once verified.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.warning("Review notify failed: %s", e)
+
+
+async def handle_receipt_link(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str):
+    """Verify a receipt URL (image or PDF, SSRF-safe fetch) against the invoice."""
+    pending = context.user_data.get("pending_order")
+    if not pending or context.user_data.get("state") != "awaiting_order_payment":
+        return
+    await update.message.reply_text("🔗 Opening your receipt link...")
+    try:
+        kind, data = await fetch_receipt_url(link)
+    except ReceiptError as e:
+        await update.message.reply_text(str(e))
+        return
+
+    async with async_session() as session:
+        biz = await session.execute(select(Business).where(Business.id == pending["business_id"]))
+        biz = biz.scalar_one_or_none()
+    if not biz:
+        await update.message.reply_text("The business is no longer available.")
+        context.user_data.pop("state", None)
+        context.user_data.pop("pending_order", None)
+        return
+
+    if kind == "image":
+        receipt = await verify_receipt(data)
+        if receipt.get("status") in ("UNREADABLE", "ERROR"):
+            await update.message.reply_text("I couldn't read that receipt. Try a clearer photo or PDF.")
+            return
+        ok, issues = _match_order_receipt(biz, pending["total"], receipt.get("amount", 0),
+                                          str(receipt.get("receiver_account", "")),
+                                          receipt.get("receiver_name", ""))
+        if ok:
+            await _confirm_paid_order(update, context, biz, pending["data"],
+                                      receipt.get("amount", 0), receipt.get("reference", "link"),
+                                      pending.get("order_id"))
+        else:
+            await update.message.reply_text(
+                "⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +
+                "\n\nPlease check and send the correct receipt.",
+                parse_mode="Markdown",
+            )
+        return
+
+    verdict = verify_pdf_receipt(data, biz.order_bank_account, biz.order_account_holder,
+                                 pending["total"])
+    if verdict["ok"]:
+        await _confirm_paid_order(update, context, biz, pending["data"],
+                                  verdict["amount"], "receipt link",
+                                  pending.get("order_id"))
+    else:
+        await update.message.reply_text(
+            f"🔍 That receipt needs owner review ({verdict.get('reason', 'unclear')}). "
+            "Send it as a clear photo, or wait — I've notified the business.",
+            parse_mode="Markdown",
+        )
+
+
 async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _has_photo(update):
-        await update.message.reply_text("Please send a photo of your payment receipt.")
+    msg = update.message if update else None
+    is_pdf = bool(msg and msg.document and (
+        (msg.document.mime_type or "") == "application/pdf"
+        or (msg.document.file_name or "").lower().endswith(".pdf")))
+    if not _has_photo(update) and not is_pdf:
+        await update.message.reply_text("Please send your receipt as a photo or PDF.")
         return
     if _is_media_group_duplicate(update):
         return
@@ -3634,6 +3944,9 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
             "your subscription activates automatically once paid."
         )
         return
+
+    if is_pdf:
+        return await handle_receipt_pdf(update, context)
 
     await update.message.reply_text("📄 Reading your receipt...")
 
@@ -3669,52 +3982,15 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
             context.user_data.pop("pending_order", None)
             return
 
-        expected_account = (biz.order_bank_account or "").replace(" ", "")
-        expected_name = (biz.order_account_holder or "").lower()
-        amount_ok = _amount_sufficient(amount, amount_needed)
-        account_ok = expected_account in receiver_account or expected_name in receiver_name
-
-        if amount_ok and account_ok:
-            products_result = await session.execute(
-                select(Product).where(Product.business_id == biz_id)
-            )
-            products = products_result.scalars().all()
-
-            order = await _create_order(biz, update.effective_user, order_data, products)
-            items_text = ", ".join(
-                f"{i.get('product','')} × {i.get('quantity',1)}"
-                for i in (order_data.get("items", [order_data]))
-            )
-
-            context.user_data.pop("state", None)
-            context.user_data.pop("pending_order", None)
-
-            await update.message.reply_text(
-                f"✅ *Payment Verified!*\n\n"
-                f"Amount: *{amount:.2f} ETB*\n"
-                f"Ref: {receipt.get('reference', 'N/A')}\n\n"
-                f"✅ *Order Confirmed!*\n"
-                f"• {items_text}\n"
-                f"• Name: {order_data.get('customer_name', '')}\n"
-                f"• Phone: {order_data.get('customer_phone', '')}\n"
-                f"• Address: {order_data.get('customer_address', '')}\n\n"
-                f"The business will prepare your order.",
-                parse_mode="Markdown",
-            )
-
-            await _notify_new_order(context, biz, order, update.effective_user)
-
-            history = context.user_data.get("customer_chat_history", [])
-            history.append({"role": "assistant", "text": f"[Order #{order.id} confirmed with payment: {items_text}]"})
-            context.user_data["customer_chat_history"] = history[-20:]
+        ok, issues = _match_order_receipt(biz, amount_needed, amount,
+                                          receiver_account, receiver_name)
+        if ok:
+            await _confirm_paid_order(update, context, biz, order_data,
+                                      amount, receipt.get("reference", "N/A"),
+                                      context.user_data.get("pending_order", {}).get("order_id"))
         else:
-            issues = []
-            if not amount_ok:
-                issues.append(f"• Expected at least *{amount_needed:.2f} ETB*, found *{amount:.2f} ETB*")
-            if not account_ok:
-                issues.append("• Receiver account doesn't match the business's account")
             await update.message.reply_text(
                 f"⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +
-                f"\n\nPlease check and send the correct receipt screenshot.",
+                f"\n\nPlease check and send the correct receipt (photo, PDF, or link).",
                 parse_mode="Markdown",
             )

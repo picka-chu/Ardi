@@ -75,6 +75,7 @@ from bot.handlers import (
     orders_page_callback,
     order_view_callback,
     order_status_callback,
+    ord_paid_callback,
     # Reply Keyboard
     keyboard_handler,
     # Business Integration
@@ -307,10 +308,10 @@ def main():
         keyboard_handler,
     ))
 
-    # Payment receipt screenshots (photos from users awaiting payment).
-    # Forwarded channel photos are excluded — they belong to handle_forwarded_channel.
+    # Payment receipts: photos + PDFs (order payments). Chapa covers subscriptions.
+    # Forwarded channel files are excluded — they belong to handle_forwarded_channel.
     app.add_handler(MessageHandler(
-        filters.PHOTO & filters.ChatType.PRIVATE & ~filters.FORWARDED,
+        (filters.PHOTO | filters.Document.PDF) & filters.ChatType.PRIVATE & ~filters.FORWARDED,
         handle_payment_screenshot,
     ))
 
@@ -331,6 +332,7 @@ def main():
     app.add_handler(CallbackQueryHandler(orders_page_callback, pattern="^orders_page_"))
     app.add_handler(CallbackQueryHandler(order_view_callback, pattern="^order_view_"))
     app.add_handler(CallbackQueryHandler(order_status_callback, pattern="^order_(confirm|complete|cancel)_"))
+    app.add_handler(CallbackQueryHandler(ord_paid_callback, pattern="^ord_paid$"))
     app.add_handler(CallbackQueryHandler(catalog_callback, pattern="^cat_"))
     app.add_handler(CallbackQueryHandler(hours_toggle_callback, pattern="^hours_toggle$"))
     app.add_handler(CallbackQueryHandler(escalation_callback, pattern="^escalation_"))

@@ -272,6 +272,10 @@ input,textarea,select,button{font-family:inherit}
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 Telegram.WebApp.ready();Telegram.WebApp.expand();
+try{const _tp=Telegram.WebApp.themeParams||{},_bg=_tp.bg_color||'#0c0c1a';Telegram.WebApp.setHeaderColor(_bg);Telegram.WebApp.setBackgroundColor(_bg);Telegram.WebApp.onEvent('themeChanged',()=>{try{const p=Telegram.WebApp.themeParams||{};Telegram.WebApp.setHeaderColor(p.bg_color||'#0c0c1a');Telegram.WebApp.setBackgroundColor(p.bg_color||'#0c0c1a')}catch(e){}})}catch(e){}
+try{Telegram.WebApp.BackButton.onClick(()=>{if($('lock')&&$('lock').classList.contains('a'))return;sp(_prevPg||'dash')})}catch(e){}
+function hap(){try{Telegram.WebApp.HapticFeedback.notificationOccurred('success')}catch(e){}}
+let _prevPg='dash';
 function dk(){return localStorage.getItem("ardi_admin_key")||""}
 function hd(){const h={"Content-Type":"application/json"};const k=dk();if(k)h["Authorization"]="Bearer "+k;return h}
 function lockShow(msg){$('lock').classList.add('a');$('lockErr').textContent=msg||'';setTimeout(()=>$('lockKey').focus(),300)}
@@ -283,7 +287,7 @@ function tt(m,t){const e=$('ts');e.textContent=m;e.className='ts'+(t?' '+t:'');r
 function ld(o){$('ld').classList.toggle('a',o)}
 function es(t){const d=document.createElement('div');d.appendChild(document.createTextNode(t));return d.innerHTML}
 document.querySelectorAll('.nb').forEach(b=>{b.onclick=()=>sp(b.dataset.pg)});
-function sp(p){document.querySelectorAll('.pg').forEach(x=>x.classList.remove('a'));const e=$('pg-'+p);if(e)e.classList.add('a');document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('a',b.dataset.pg===p));if(p==='dash')lda();else if(p==='biz')lb();else if(p==='sub')ls();else if(p==='ord')lo();else if(p==='set')lse()}
+function sp(p){if(p==='dtl'&&!$('pg-dtl').classList.contains('a')){_prevPg=document.querySelector('.pg.a')?.id?.replace('pg-','')||'dash'}document.querySelectorAll('.pg').forEach(x=>x.classList.remove('a'));const e=$('pg-'+p);if(e)e.classList.add('a');document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('a',b.dataset.pg===p));try{if(p==='dtl')Telegram.WebApp.BackButton.show();else Telegram.WebApp.BackButton.hide()}catch(e){}if(p==='dash')lda();else if(p==='biz')lb();else if(p==='sub')ls();else if(p==='ord')lo();else if(p==='set')lse()}
 async function ap(p,o){ld(true);try{const r=await fetch(p,{headers:hd(),...o});if(r.status===401||r.status===403){lockShow(dk()?'Wrong key — try again.':'');return null}if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}catch(e){tt('Error: '+e.message,'er');return null}finally{ld(false)}}
 
 async function lda(){const d=await ap('/api/admin/dashboard');if(!d)return;const s=$('stb');if(d.bot_online){s.className='bd';$('stt').textContent='Online'}else{s.className='bd o';$('stt').textContent='Offline'}
@@ -503,6 +507,9 @@ BIZ_HTML = r"""<!DOCTYPE html>
     .qa .e,.ni .e{display:flex;align-items:center;justify-content:center}
     .stat .ic{color:var(--hint)}
     .tone .e{font-size:20px}
+    .ava-wrap{position:relative;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+    .ava-wrap:active{transform:scale(.94)}
+    .ava-edit{position:absolute;right:-4px;bottom:-4px;width:20px;height:20px;border-radius:50%;background:var(--btn);color:var(--btn-tx);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
   </style>
 </head>
 <body>
@@ -521,7 +528,7 @@ BIZ_HTML = r"""<!DOCTYPE html>
 <!-- HOME -->
 <section class="pg on" id="pg-home">
   <div class="card" style="padding:12px 16px"><div class="row" style="border:none;padding:2px 0">
-    <div class="ava" id="ava">A</div>
+    <div class="ava-wrap" onclick="goProfile()" title="Edit profile"><div class="ava" id="ava">A</div><span class="ava-edit" data-ic="plus" data-sz="11"></span></div>
     <div class="tx"><div class="t1" id="bizName" style="font-size:16px">Ardi Business</div>
     <div class="t2"><span class="dot" id="aiDot"></span> <span id="bizSub">Connecting…</span></div></div>
   </div></div>
@@ -558,6 +565,8 @@ BIZ_HTML = r"""<!DOCTYPE html>
     <button class="chip" data-f="confirmed" onclick="setOrd('confirmed',this)" data-i="f_conf">Confirmed</button>
     <button class="chip" data-f="completed" onclick="setOrd('completed',this)" data-i="f_done">Completed</button>
     <button class="chip" data-f="cancelled" onclick="setOrd('cancelled',this)" data-i="f_canc">Cancelled</button>
+    <button class="chip" data-f="awaiting_payment" onclick="setOrd('awaiting_payment',this)" data-i="f_await">Awaiting</button>
+    <button class="chip" data-f="review" onclick="setOrd('review',this)" data-i="f_review">Review</button>
   </div></div>
   <div style="font-size:12px;color:var(--hint);margin:2px 2px 10px" id="ordCount"></div>
   <div id="olist"></div>
@@ -598,10 +607,15 @@ BIZ_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
   <div class="sec-t" data-i="m_pay">Payments</div>
+  <div class="card" id="chapaBalCard" hidden><div class="set-row" style="cursor:default"><div class="tx"><div class="t1" data-i="chapa_bal">Chapa received</div><div class="t2" data-i="chapa_bal_s">Settles directly to your Chapa account</div></div><div class="amt" id="chapaBal">—</div></div></div>
   <div class="card"><label class="fl" data-i="bank">Bank name</label><input class="inp" id="bkN" maxlength="100">
     <label class="fl" data-i="acc_no">Account number</label><input class="inp" id="bkA" maxlength="100" inputmode="numeric">
     <label class="fl" data-i="acc_name">Account holder</label><input class="inp" id="bkH" maxlength="255">
     <button class="btn b-p" onclick="saveBank()" data-i="save">Save</button></div>
+  <div class="card"><label class="fl" data-i="chapa_key">Chapa secret key (for customer checkouts)</label><input class="inp" id="ckK" maxlength="255" placeholder="CHASECK-…" autocomplete="off">
+    <div style="font-size:11px;color:var(--hint);margin:-6px 0 10px" data-i="chapa_key_s">From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.</div>
+    <div class="btn-row"><button class="btn b-p" onclick="saveChapa()" data-i="save">Save</button><button class="btn b-s" onclick="clearChapa()" data-i="remove">Remove</button></div>
+    <div style="font-size:12px;color:var(--hint)" id="ckState"></div></div>
   <div class="sec-t" data-i="m_app">App</div>
   <div class="card" style="padding:4px 16px">
     <div class="set-row" onclick="toggleLang()"><div class="tx"><div class="t1" data-i="lang">Language / ቋንቋ</div><div class="t2" id="langName">English</div></div><span style="color:var(--hint)">›</span></div>
@@ -639,27 +653,27 @@ function hap(k){ try{ tg?.HapticFeedback?.notificationOccurred(k||'success'); }c
 function toast(m,k){ const e=$('toast'); e.textContent=m; e.className='toast show '+(k||''); clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('show'),2800); }
 function loading(on){ $('loader').classList.toggle('on',!!on); }
 function authH(){ const h={'Content-Type':'application/json'}; if(INIT_DATA)h['X-Telegram-Init-Data']=INIT_DATA; if(DASH_TOKEN)h['X-Dashboard-Token']=DASH_TOKEN; return h; }
-async function api(p,o){ loading(true); try{
+async function api(p,o,q){ if(!q)loading(true); try{
   const c=new AbortController(); const to=setTimeout(()=>c.abort(),20000);
   const r=await fetch(p,{headers:authH(),signal:c.signal,...(o||{})}); clearTimeout(to);
   if(r.status===401||r.status===403){ showSess(); return null; }
   let j=null; try{ j=await r.json(); }catch(e){}
-  if(!r.ok){ toast((j&&j.detail)||('Error '+r.status),'err'); return null; }
-  if(j&&j.error){ toast(j.error,'err'); return null; }
+  if(!r.ok){ if(!q)toast((j&&j.detail)||('Error '+r.status),'err'); return null; }
+  if(j&&j.error){ if(!q)toast(j.error,'err'); return null; }
   return j;
-}catch(e){ toast(t('net_err'),'err'); return null; }finally{ loading(false); } }
+}catch(e){ if(!q)toast(t('net_err'),'err'); return null; }finally{ if(!q)loading(false); } }
 function showSess(){ $('sess').hidden=false; $('app').hidden=true; document.querySelector('.nav').style.display='none'; $('fab').hidden=true; }
 
 /* ── i18n (English / Amharic) ── */
 const T={
 en:{sess_t:'Session expired',sess_s:'Reopen this app from the Ardi bot to continue.',retry:'Retry',net_err:'Network error. Try again.',
 quick:'Quick actions',qa_add:'Add',qa_orders:'Orders',qa_ai:'AI',qa_share:'Share',recent:'Recent orders',view_all:'View all →',
-search_ph:'Search products…',f_all:'All',f_in:'In stock',f_out:'Out of stock',f_pending:'Pending',f_conf:'Confirmed',f_done:'Completed',f_canc:'Cancelled',
+search_ph:'Search products…',f_all:'All',f_in:'In stock',f_out:'Out of stock',f_pending:'Pending',f_conf:'Confirmed',f_done:'Completed',f_canc:'Cancelled',f_await:'Awaiting',f_review:'Review',st_await:'Awaiting payment',st_review:'Under review',
 pay_to:'Send payment to',receipt:'Payment receipt',up_t:'Tap to upload screenshot',submit_receipt:'Submit payment proof',
 m_biz:'Business',profile:'Store profile',share_store:'Share my store',share_s:'Link for customers',channel:'Sales channel',channel_s:'Auto-import from Telegram channel',
 channel_h:'1. Add the Ardi bot as admin to your channel<br>2. Forward any channel message to the bot<br>3. New photo posts with prices are saved as products automatically.',
 ai_reply:'AI auto-reply',tone:'Conversation tone',hours:'Business hours',hours_on:'Enable business hours',offline:'Offline message',
-bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',m_pay:'Payments',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
+bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',remove:'Remove',m_pay:'Payments',chapa_bal:'Chapa received',chapa_bal_s:'Settles directly to your Chapa account',chapa_key:'Chapa secret key (for customer checkouts)',chapa_key_s:'From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.',chapa_badkey:'Key must start with CHASECK-',chapa_rm_q:'Remove your Chapa key? Online checkout turns off.',chapa_on:'Online checkout is ON',chapa_off:'Online checkout is off',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
 tab_home:'Home',tab_cat:'Catalog',tab_ord:'Orders',tab_plan:'Plan',tab_more:'More',p_name:'Store name',p_phone:'Phone',p_addr:'Address',p_desc:'Description',
 products:'Products',orders:'Orders',revenue:'Revenue',pending:'Pending',in_stock:'In stock',out:'Out of stock',edit:'Edit product',add_p:'Add product',
 photo:'Photo',change:'Change',pname_ph:'e.g. Fresh Avocado',price_ph:'Price in ETB',save_p:'Save product',delete:'Delete product',cancel:'Cancel',
@@ -669,19 +683,19 @@ confirm:'Confirm',complete:'Complete',cancel_o:'Cancel order',st_pending:'Pendin
 ai_on:'AI replies to customers automatically',ai_off:'AI is off — you reply manually',trial:'Trial',active:'Active',awaiting:'Awaiting payment',expired:'Expired',suspended:'Suspended',
 days_left:'days left',choose_plan:'Choose a plan',monthly:'Monthly',yearly:'Yearly',per_mo:'/mo',best:'Best value',mo_desc:'Billed monthly · cancel anytime',yr_desc:'2 months free · best for growing stores',
 cur_monthly:'Monthly plan active',cur_yearly:'Yearly plan active',await_t:'Payment sent — waiting for admin confirmation.',exp_t:'Subscribe to keep selling with Ardi AI.',
-sub_now:'Subscribe now',proceed:'Proceed with this plan?',plan_ok:'Plan selected — send payment below',pay_chapa:'Pay instantly with Chapa',chapa_pending:'Complete payment in Chapa',chapa_hint:'Pay with Telebirr, CBE or card, then come back and verify.',chapa_verify:"I've paid — verify",chapa_opened:'Chapa checkout opened',chapa_nopay:'Start a Chapa payment first',copy:'Copy link',open:'Open in Telegram',copied:'Link copied ✓',
+sub_now:'Subscribe now',proceed:'Proceed with this plan?',plan_ok:'Plan selected — send payment below',pay_chapa:'Pay instantly with Chapa',chapa_pending:'Complete payment in the new tab',chapa_hint:'Pay with Telebirr, CBE or card, then return here.',chapa_auto:'Confirming automatically — keep this page open.',chapa_opened:'Chapa checkout opened in a new tab',copy:'Copy link',open:'Open in Telegram',copied:'Link copied ✓',
 shr_t:'Your store link',shr_s:'Share it anywhere — customers chat & order automatically.',prof_ok:'Profile saved ✓',set_ok:'Saved ✓',ai_on_t:'AI is ON 🤖',ai_off_t:'AI is OFF ⏸️',
 tone_ok:'Tone saved ✓',hrs_ok:'Hours saved ✓',off_ok:'Message saved ✓',bank_ok:'Payment info saved ✓',ord_ok:'Order updated ✓',prod_ok:'Product saved ✓',prod_del:'Product deleted 🗑️',
 rec_ok:'Receipt submitted! Admin will verify. 📩',sel_img:'Choose an image first',enter_name:'Enter a name (2+ letters)',enter_price:'Enter a valid price',
 enter_hrs:'Enter start & end time (HH:MM)',bad_hrs:'Use 24h format like 09:00',call:'Call',chat:'Chat'},
 am:{sess_t:'ክፍለ-ጊዜው አልቋል',sess_s:'ለመቀጠል መተግበሪያውን ከArdi bot እንደገና ይክፈቱ።',retry:'እንደገና ሞክር',net_err:'የኔትወርክ ስህተት። እንደገና ይሞክሩ።',
 quick:'ፈጣን እርምጃዎች',qa_add:'ጨምር',qa_orders:'ትዕዛዞች',qa_ai:'AI',qa_share:'አጋራ',recent:'የቅርብ ጊዜ ትዕዛዞች',view_all:'ሁሉንም →',
-search_ph:'ምርቶችን ፈልግ…',f_all:'ሁሉም',f_in:'በስቶክ ያለ',f_out:'ያለቀ',f_pending:'በመጠባበቅ ላይ',f_conf:'ተቀባይነት ያገኘ',f_done:'ተጠናቋል',f_canc:'ተሰርዟል',
+search_ph:'ምርቶችን ፈልግ…',f_all:'ሁሉም',f_in:'በስቶክ ያለ',f_out:'ያለቀ',f_pending:'በመጠባበቅ ላይ',f_conf:'ተቀባይነት ያገኘ',f_done:'ተጠናቋል',f_canc:'ተሰርዟል',f_await:'በመጠባበቅ ላይ',f_review:'ለግምገማ',st_await:'ክፍያ በመጠባበቅ ላይ',st_review:'በግምገማ ላይ',
 pay_to:'ክፍያ ይላኩ ወደ',receipt:'የክፍያ ደረሰኝ',up_t:'ስክሪንሾት ለመስቀል ይንኩ',submit_receipt:'የክፍያ ማረጋገጫ ላክ',
 m_biz:'ንግድ',profile:'የሱቅ መገለጫ',share_store:'ሱቄን አጋራ',share_s:'ለደንበኞች ሊንክ',channel:'የሽያጭ ቻናል',channel_s:'ከቴሌግራም ቻናል በራስ-ሰር',
 channel_h:'1. Ardi botን በቻናልዎ አድሚን ያድርጉ<br>2. ማንኛውንም የቻናል መልእክት ለbot ያስተላልፉ<br>3. አዳዲስ የምስል ልጥፎች በራስ-ሰር እንደ ምርት ይቀመጣሉ።',
 ai_reply:'AI በራስ-ሰር መልስ',tone:'የውይይት ዘይቤ',hours:'የስራ ሰዓት',hours_on:'የስራ ሰዓት አንቃ',offline:'ከስራ ሰዓት ውጪ መልእክት',
-bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',m_pay:'ክፍያዎች',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
+bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',remove:'አስወግድ',m_pay:'ክፍያዎች',chapa_bal:'በChapa የገባ',chapa_bal_s:'ቀጥታ ወደ Chapa ሂሳብዎ ይገባል',chapa_key:'የChapa ሚስጥራዊ ቁልፍ (ለደንበኛ ክፍያ)',chapa_key_s:'ከdashboard.chapa.co። ገንዘቡ ቀጥታ ወደ Chapa ሂሳብዎ ይሄዳል — Ardi ገንዘብ አይይዝም።',chapa_badkey:'ቁልፉ በCHASECK- መጀመር አለበት',chapa_rm_q:'የChapa ቁልፍዎን ማስወገድ? የመስመር ላይ ክፍያ ይጠፋል።',chapa_on:'የመስመር ላይ ክፍያ በርቷል',chapa_off:'የመስመር ላይ ክፍያ ጠፍቷል',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
 tab_home:'መነሻ',tab_cat:'ምርቶች',tab_ord:'ትዕዛዞች',tab_plan:'ፕላን',tab_more:'ተጨማሪ',p_name:'የሱቅ ስም',p_phone:'ስልክ',p_addr:'አድራሻ',p_desc:'መግለጫ',
 products:'ምርቶች',orders:'ትዕዛዞች',revenue:'ገቢ',pending:'በመጠባበቅ ላይ',in_stock:'በስቶክ ያለ',out:'ያለቀ',edit:'ምርት አርም',add_p:'ምርት ጨምር',
 photo:'ፎቶ',change:'ቀይር',pname_ph:'ለምሳሌ ትኩስ አቮካዶ',price_ph:'ዋጋ በኢቲቢ',save_p:'ምርቱን አስቀምጥ',delete:'ምርቱን ሰርዝ',cancel:'ሰርዝ',
@@ -691,7 +705,7 @@ confirm:'አጽድቅ',complete:'አጠናቅቅ',cancel_o:'ትዕዛዙን ሰ�
 ai_on:'AI ለደንበኞች በራስ-ሰር ይመልሳል',ai_off:'AI ጠፍቷል — እርስዎ በእጅ ይመልሳሉ',trial:'ሙከራ',active:'ንቁ',awaiting:'ክፍያ በመጠባበቅ ላይ',expired:'ጊዜው አልፎበታል',suspended:'ታግዷል',
 days_left:'ቀናት ቀርተዋል',choose_plan:'እቅድ ይምረጡ',monthly:'ወርሃዊ',yearly:'ዓመታዊ',per_mo:'/ወር',best:'ምርጥ ምርጫ',mo_desc:'በየወሩ ክፍያ · በማንኛውም ጊዜ ይሰርዙ',yr_desc:'2 ወር ነፃ · ለሚያድጉ ሱቆች',
 cur_monthly:'ወርሃዊ እቅድ ንቁ ነው',cur_yearly:'ዓመታዊ እቅድ ንቁ ነው',await_t:'ክፍያ ተልኳል — የአድሚን ማረጋገጫ በመጠባበቅ ላይ።',exp_t:'ከArdi AI ጋር ለመሸጥ ይመዝገቡ።',
-sub_now:'አሁን ይመዝገቡ',proceed:'በዚህ እቅድ ይቀጥሉ?',plan_ok:'እቅድ ተመርጧል — ክፍያ ከዚህ በታች ይላኩ',pay_chapa:'በChapa በአፋጣኝ ይክፈሉ',chapa_pending:'ክፍያዎን በChapa ያጠናቅቁ',chapa_hint:'በቴሌብር፣ CBE ወይም ካርድ ይክፈሉ፣ ከዚያ ተመልሰው ያረጋግጡ።',chapa_verify:'ከፍያለሁ — ያረጋግጡ',chapa_opened:'የChapa ክፍያ ተከፍቷል',chapa_nopay:'መጀመሪያ የChapa ክፍያ ይጀምሩ',copy:'ሊንኩን ቅዳ',open:'በቴሌግራም ክፈት',copied:'ሊንኩ ተቀድቷል ✓',
+sub_now:'አሁን ይመዝገቡ',proceed:'በዚህ እቅድ ይቀጥሉ?',plan_ok:'እቅድ ተመርጧል — ክፍያ ከዚህ በታች ይላኩ',pay_chapa:'በChapa በአፋጣኝ ይክፈሉ',chapa_pending:'ክፍያዎን በአዲሱ ትር ያጠናቅቁ',chapa_hint:'በቴሌብር፣ CBE ወይም ካርድ ይክፈሉ፣ ከዚያ እዚህ ይመለሱ።',chapa_auto:'በራስ-ሰር እያረጋገጥን ነው — ይህን ገጽ ክፍት ያድርጉ።',chapa_opened:'የChapa ክፍያ በአዲስ ትር ተከፍቷል',copy:'ሊንኩን ቅዳ',open:'በቴሌግራም ክፈት',copied:'ሊንኩ ተቀድቷል ✓',
 shr_t:'የሱቅዎ ሊንክ',shr_s:'የትም ቦታ ያጋሩ — ደንበኞች በራስ-ሰር ያዣሉ።',prof_ok:'መገለጫ ተቀምጧል ✓',set_ok:'ተቀምጧል ✓',ai_on_t:'AI በርቷል 🤖',ai_off_t:'AI ጠፍቷል ⏸️',
 tone_ok:'ዘይቤ ተቀምጧል ✓',hrs_ok:'ሰዓት ተቀምጧል ✓',off_ok:'መልእክት ተቀምጧል ✓',bank_ok:'የክፍያ መረጃ ተቀምጧል ✓',ord_ok:'ትዕዛዝ ታድሷል ✓',prod_ok:'ምርት ተቀምጧል ✓',prod_del:'ምርት ተሰርዟል 🗑️',
 rec_ok:'ደረሰኝ ተልኳል! አድሚን ያረጋግጣል። 📩',sel_img:'መጀመሪያ ምስል ይምረጡ',enter_name:'ስም ያስገቡ (2+ ፊደላት)',enter_price:'ትክክለኛ ዋጋ ያስገቡ',
@@ -703,7 +717,7 @@ function toggleLang(){ LANG=LANG==='am'?'en':'am'; localStorage.setItem('ardi_la
 
 /* ── router + sheets ── */
 let TAB='home';
-function go(tab){ TAB=tab; closeSheet(true);
+function go(tab){ TAB=tab; closeSheet(true); try{clearTimeout(_pollT)}catch(e){}
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on')); $('pg-'+tab).classList.add('on');
   document.querySelectorAll('#navIn .ni').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
   $('fab').hidden=tab!=='catalog'; if(tg?.BackButton)tg.BackButton.hide();
@@ -713,6 +727,7 @@ function openSheet(h){ $('sheetIn').innerHTML=h; $('ov').classList.add('on'); $(
 function closeSheet(s){ if(!$('sheet').classList.contains('on'))return; $('ov').classList.remove('on'); $('sheet').classList.remove('on'); if(tg){tg.BackButton.hide();try{tg.disableClosingConfirmation()}catch(e){}} }
 if(tg){ try{tg.BackButton.onClick(()=>closeSheet())}catch(e){} }
 function toggleBox(id){ const e=$(id); e.hidden=!e.hidden; }
+function goProfile(){ go('more'); const b=$('profBox'); if(b&&b.hidden)b.hidden=false; hap('light'); setTimeout(()=>{const n=$('pfName'); if(n){try{n.scrollIntoView({behavior:'smooth',block:'center'})}catch(e){} setTimeout(()=>{try{n.focus({preventScroll:true})}catch(e){}},450)}},300); }
 
 /* ── shared state + format ── */
 const S={dash:null,products:[],orders:[],sub:null,settings:null,profile:null,stockF:'all',ordF:'all',photoB64:null,recB64:null,planSel:null,pend:0};
@@ -745,7 +760,7 @@ chart:'<path d="M5 20v-6M11 20V6M17 20v-9"/>'};
 function ic(n,s){s=s||22;return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[n]||IC.box}</svg>`}
 function paintIcons(root){(root||document).querySelectorAll('[data-ic]').forEach(el=>{el.innerHTML=ic(el.dataset.ic,+(el.dataset.sz||22))})}
 function imgFb(el,icn){const d=document.createElement('div');d.className='im ph';d.innerHTML=ic(icn||'box',22);el.replaceWith(d)}
-function pill(st){ const m={pending:['p-brand',t('st_pending')],confirmed:['p-ok',t('st_confirmed')],completed:['p-ok',t('st_completed')],cancelled:['p-bad',t('st_cancelled')],active:['p-ok',t('active')],trial:['p-warn',t('trial')],awaiting_payment:['p-warn',t('awaiting')],expired:['p-bad',t('expired')],suspended:['p-bad',t('suspended')]}; const v=m[st]||['p-brand',st]; return `<span class="pill ${v[0]}">${esc(v[1])}</span>`; }
+function pill(st){ const m={pending:['p-brand',t('st_pending')],confirmed:['p-ok',t('st_confirmed')],completed:['p-ok',t('st_completed')],cancelled:['p-bad',t('st_cancelled')],awaiting_payment:['p-warn',t('st_await')],review:['p-warn',t('st_review')],active:['p-ok',t('active')],trial:['p-warn',t('trial')],awaiting:['p-warn',t('awaiting')],expired:['p-bad',t('expired')],suspended:['p-bad',t('suspended')]}; const v=m[st]||['p-brand',st]; return `<span class="pill ${v[0]}">${esc(v[1])}</span>`; }
 function skel(n){ return Array(n).fill('<div class="card"><div class="skl" style="height:16px;width:60%;margin-bottom:8px">x</div><div class="skl" style="height:12px;width:90%">x</div></div>').join(''); }
 function empty(icn,ti,s,btn,fn){ return `<div class="empty"><div class="e">${ic(icn,46)}</div><div class="t">${ti}</div><div class="s">${s}</div>${btn?`<button class="btn b-p" style="max-width:220px;margin:0 auto" onclick="${fn}">${btn}</button>`:''}</div>`; }
 function renderAll(){ applyI18n(); paintIcons(); go(TAB); }
@@ -923,19 +938,22 @@ async function loadPlan(){
   if(S.planSel){ $('planCta').innerHTML=`<button class="btn b-p" onclick="chapaPay()">${t('pay_chapa')}</button><div id="chapaBox"></div>`; }
 }
 function pickPlan(plan){ S.planSel=plan; hap('light'); loadPlan(); }
+let _pollT=null;
 async function chapaPay(){
   const plan=S.planSel||'monthly';
   const d=await api('/api/business/subscription/chapa-pay',{method:'POST',body:JSON.stringify({plan})});
   if(!d||!d.checkout_url)return;
   S.chapaTx=d.tx_ref;
-  try{ tg?.openLink(d.checkout_url); }catch(e){ window.open(d.checkout_url,'_blank'); }
-  $('chapaBox').innerHTML=`<div class="card" style="text-align:center;margin-top:10px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">${t('chapa_pending')}</div><div style="font-size:12px;color:var(--hint);margin-bottom:12px">${t('chapa_hint')}</div><button class="btn b-p" onclick="chapaVerify()">${t('chapa_verify')}</button></div>`;
+  try{ const w=window.open(d.checkout_url,'_blank'); if(!w&&tg?.openLink)tg.openLink(d.checkout_url); }catch(e){ try{tg?.openLink(d.checkout_url)}catch(e2){} }
+  $('chapaBox').innerHTML=`<div class="card" style="text-align:center;margin-top:10px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">${t('chapa_pending')}</div><div style="font-size:12px;color:var(--hint)">${t('chapa_hint')}</div><div style="font-size:12px;color:var(--hint);margin-top:8px">${t('chapa_auto')}</div></div>`;
   toast(t('chapa_opened'),'ok');
+  pollChapa();
 }
-async function chapaVerify(){
-  if(!S.chapaTx){toast(t('chapa_nopay'),'err');return}
-  const d=await api('/api/business/subscription/chapa-verify',{method:'POST',body:JSON.stringify({tx_ref:S.chapaTx})});
-  if(d&&d.success){toast(t('rec_ok'),'ok');hap();S.chapaTx=null;loadPlan()}
+async function pollChapa(n){
+  n=n||0; if(!S.chapaTx||n>120)return;
+  const d=await api('/api/business/subscription/chapa-verify',{method:'POST',body:JSON.stringify({tx_ref:S.chapaTx})},true);
+  if(d&&d.success){toast(t('rec_ok'),'ok');hap();S.chapaTx=null;loadPlan();return}
+  _pollT=setTimeout(()=>pollChapa(n+1),5000);
 }
 /* ── MORE: profile, AI, hours, bank ── */
 const TONES=[{id:'friendly',e:'😊'},{id:'professional',e:'🤵'},{id:'casual',e:'😎'},{id:'formal',e:'🎩'},{id:'witty',e:'😜'}];
@@ -953,6 +971,8 @@ async function loadMore(){
     $('hrsSum').textContent=s.business_hours_enabled?((s.business_hours_start||'?')+'–'+(s.business_hours_end||'?')):t('hours');
     $('offMsg').value=s.ai_offline_message||'';
     $('bkN').value=s.order_bank_name||''; $('bkA').value=s.order_bank_account||''; $('bkH').value=s.order_account_holder||'';
+    $('ckState').textContent=s.chapa_connected?t('chapa_on'):t('chapa_off');
+    const _bc=$('chapaBalCard'); _bc.hidden=!(s.chapa_balance>0); $('chapaBal').textContent=fmtN(s.chapa_balance||0);
     $('planSum').textContent=s.subscription_status||'—';
     $('bizSub').textContent=s.subscription_status||'';
   }
@@ -979,6 +999,8 @@ async function saveHrs(){
 }
 async function saveOff(){ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({ai_offline_message:$('offMsg').value})}); if(d&&d.success){toast(t('off_ok'),'ok');hap()} }
 async function saveBank(){ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({order_bank_name:$('bkN').value,order_bank_account:$('bkA').value,order_account_holder:$('bkH').value})}); if(d&&d.success){toast(t('bank_ok'),'ok');hap()} }
+async function saveChapa(){ const v=$('ckK').value.trim(); if(v&&!v.startsWith('CHASECK-')){toast(t('chapa_badkey'),'err');return} const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({chapa_secret_key:v})}); if(d&&d.success){toast(t('set_ok'),'ok');hap();$('ckK').value='';loadMore()} }
+async function clearChapa(){ confirmDlg(t('chapa_rm_q'),async()=>{ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({chapa_secret_key:''})}); if(d&&d.success){toast(t('set_ok'),'ok');hap();loadMore()} }); }
 
 /* ── SHARE ── */
 async function openShare(){
@@ -1021,6 +1043,23 @@ async def index():
 @app.get("/business", response_class=HTMLResponse)
 async def business_miniapp():
     return BIZ_HTML
+
+
+PAY_DONE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ardi AI — Payment</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e0e1a;color:#f2f2f7;font-family:system-ui,sans-serif;text-align:center;padding:24px}h2{font-size:20px;margin:12px 0 8px}p{font-size:14px;color:#8e8e9e;line-height:1.6}.ok{width:64px;height:64px;border-radius:50%;background:rgba(46,213,115,.15);color:#2ed573;font-size:32px;display:flex;align-items:center;justify-content:center;margin:0 auto}</style>
+</head>
+<body><div><div class="ok">✓</div><h2>Payment received</h2><p>Return to Telegram — your subscription activates automatically.<br> ክፍያዎ ደርሷል — ወደ ቴሌግራም ይመለሱ።</p></div>
+<script>setTimeout(function(){try{window.close()}catch(e){}},2000)</script>
+</body>
+</html>"""
+
+
+@app.get("/pay/done", response_class=HTMLResponse)
+async def pay_done():
+    return PAY_DONE_HTML
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1449,12 +1488,14 @@ async def biz_dashboard(request: Request):
         from sqlalchemy import select, func
 
         async with async_session() as s:
+            from db.models import OrderPayment
             pc = (await s.execute(select(func.count(Product.id)).where(Product.business_id == b.id))).scalar() or 0
             oc = (await s.execute(select(func.count(Order.id)).where(Order.business_id == b.id))).scalar() or 0
             rev = (await s.execute(select(func.coalesce(func.sum(Order.total_price), 0)).where(Order.business_id == b.id, Order.status.in_(["confirmed", "completed"])))).scalar() or 0.0
+            bal = (await s.execute(select(func.coalesce(func.sum(OrderPayment.amount), 0)).where(OrderPayment.business_id == b.id, OrderPayment.status == "paid"))).scalar() or 0.0
             recent = (await s.execute(select(Order).where(Order.business_id == b.id).order_by(Order.created_at.desc()).limit(5))).scalars().all()
             ro = [{"id": o.id, "customer_name": o.customer_name, "total_price": str(o.total_price), "status": o.status, "created_at": o.created_at.isoformat() if o.created_at else ""} for o in recent]
-            return {"name": b.name, "product_count": pc, "order_count": oc, "revenue": round(float(rev), 2), "subscription_status": b.subscription_status, "recent_orders": ro}
+            return {"name": b.name, "product_count": pc, "order_count": oc, "revenue": round(float(rev), 2), "chapa_balance": round(float(bal), 2), "chapa_connected": bool((b.chapa_secret_key or "").strip()), "subscription_status": b.subscription_status, "recent_orders": ro}
     except Exception as e:
         return {"error": str(e)}
 
@@ -1649,8 +1690,8 @@ async def biz_update_order_status(request: Request, order_id: int):
         from db.database import async_session
         from db.models import Order
 
-        # Allowed transitions: pending -> confirmed/cancelled, confirmed -> completed/cancelled.
-        _ALLOWED = {"pending": ("confirmed", "cancelled"), "confirmed": ("completed", "cancelled")}
+        # Allowed transitions: pending/review/awaiting -> confirmed/cancelled, confirmed -> completed/cancelled.
+        _ALLOWED = {"pending": ("confirmed", "cancelled"), "review": ("confirmed", "cancelled"), "awaiting_payment": ("confirmed", "cancelled"), "confirmed": ("completed", "cancelled")}
         async with async_session() as s:
             o = await s.get(Order, order_id)
             if not o or o.business_id != b.id:
@@ -1738,7 +1779,7 @@ async def biz_chapa_pay(request: Request):
             bb.subscription_status = "awaiting_payment"
             co = await chapa.create_checkout(
                 bb, plan, amount,
-                return_url=f"{base}/business",
+                return_url=f"{base}/pay/done",
                 callback_url=f"{base}/api/chapa/webhook",
             )
             if not co:
@@ -1798,6 +1839,63 @@ async def _settle_chapa_payment(tx_ref: str) -> dict:
         await s.commit()
         return {"paid": True, "business_id": b.id, "plan": row.plan,
                 "chat_id": b.telegram_chat_id, "name": b.name}
+
+
+async def _settle_order_payment(tx_ref: str) -> dict:
+    """Settle a customer order paid via the business's own Chapa key.
+
+    Money lands directly in the business's Chapa account — Ardi only
+    records it. Idempotent. Returns {paid, already?, order_id, ...}.
+    """
+    import chapa
+    from db.database import async_session
+    from db.models import Business, Order, OrderPayment
+    from sqlalchemy import select
+
+    async with async_session() as s:
+        pay = (await s.execute(
+            select(OrderPayment).where(OrderPayment.tx_ref == tx_ref)
+        )).scalar_one_or_none()
+        if not pay:
+            return {"paid": False, "reason": "unknown reference"}
+        if pay.status == "paid":
+            return {"paid": True, "already": True}
+        biz = await s.get(Business, pay.business_id)
+        if not biz or not (biz.chapa_secret_key or "").strip():
+            return {"paid": False, "reason": "no business key"}
+        key = biz.chapa_secret_key.strip()
+        order_id, biz_id, expected = pay.order_id, pay.business_id, float(pay.amount or 0)
+    verdict = await chapa.verify_payment(tx_ref, secret=key)
+    if not verdict.get("paid"):
+        async with async_session() as s:
+            pay = await s.get(OrderPayment, pay.id)
+            if pay and pay.status != "paid":
+                pay.status = "failed"
+                await s.commit()
+        return {"paid": False}
+    try:
+        got = float(verdict.get("amount") or 0)
+    except (ValueError, TypeError):
+        got = 0.0
+    async with async_session() as s:
+        pay = await s.get(OrderPayment, pay.id)
+        order = await s.get(Order, order_id)
+        if not pay or not order:
+            return {"paid": False, "reason": "gone"}
+        if got + 1.0 < expected:
+            pay.status = "failed"
+            await s.commit()
+            return {"paid": False, "reason": "amount mismatch"}
+        pay.status = "paid"
+        pay.chapa_ref = (verdict.get("chapa_ref") or "")[:100]
+        if order.status in ("awaiting_payment", "review", "pending"):
+            order.status = "pending"
+        await s.commit()
+        return {"paid": True, "order_id": order.id,
+                "total": float(order.total_price or 0),
+                "customer_id": order.customer_telegram_id,
+                "owner_chat": biz.telegram_chat_id,
+                "business_name": biz.name}
 
 
 @app.post("/api/business/subscription/chapa-verify")
@@ -1862,6 +1960,30 @@ async def chapa_webhook(request: Request):
                     )
                 except Exception:
                     pass
+            elif result.get("reason") == "unknown reference":
+                oresult = await _settle_order_payment(tx_ref)
+                if oresult.get("paid") and not oresult.get("already"):
+                    try:
+                        from telegram import Bot
+                        from config import TELEGRAM_TOKEN
+                        bot = Bot(TELEGRAM_TOKEN)
+                        if oresult.get("customer_id"):
+                            await bot.send_message(
+                                oresult["customer_id"],
+                                f"✅ *Payment Confirmed!*\n\n"
+                                f"Order *#{oresult['order_id']}* ({oresult['total']:.2f} ETB) is paid. "
+                                "The business will prepare it shortly.",
+                                parse_mode="Markdown",
+                            )
+                        await bot.send_message(
+                            oresult["owner_chat"],
+                            f"💰 *Chapa payment received — Order #{oresult['order_id']}*\n\n"
+                            f"Amount: *{oresult['total']:.2f} ETB*\n"
+                            f"Settles directly to your Chapa account.",
+                            parse_mode="Markdown",
+                        )
+                    except Exception:
+                        pass
         except Exception:
             pass
     return {"ok": True}
@@ -1871,6 +1993,12 @@ async def chapa_webhook(request: Request):
 async def biz_settings(request: Request):
     biz_data = await _require_business(request)
     b = biz_data["business"]
+    from db.database import async_session
+    from db.models import OrderPayment
+    from sqlalchemy import select, func
+    async with async_session() as s:
+        bal = (await s.execute(select(func.coalesce(func.sum(OrderPayment.amount), 0)).where(
+            OrderPayment.business_id == b.id, OrderPayment.status == "paid"))).scalar() or 0.0
     return {
         "ai_active": b.ai_active,
         "ai_tone": b.ai_tone,
@@ -1881,6 +2009,8 @@ async def biz_settings(request: Request):
         "order_bank_name": b.order_bank_name,
         "order_bank_account": b.order_bank_account,
         "order_account_holder": b.order_account_holder,
+        "chapa_connected": bool((b.chapa_secret_key or "").strip()),
+        "chapa_balance": round(float(bal), 2),
         "subscription_status": b.subscription_status,
         "subscription_plan": b.subscription_plan,
         "subscription_end": b.subscription_end.isoformat() if b.subscription_end else None,
@@ -2005,8 +2135,15 @@ async def biz_update_settings(request: Request):
             for field in ("ai_tone", "business_hours_enabled", "business_hours_start", "business_hours_end", "ai_offline_message", "order_bank_name", "order_bank_account", "order_account_holder"):
                 if field in body:
                     setattr(bb, field, body[field])
+            if "chapa_secret_key" in body:
+                key = (body["chapa_secret_key"] or "").strip()
+                if key and not key.startswith("CHASECK-"):
+                    raise HTTPException(status_code=400, detail="Chapa key must start with CHASECK-")
+                bb.chapa_secret_key = key or None
             await s.commit()
             return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"error": str(e)}
 

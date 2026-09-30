@@ -114,7 +114,7 @@ async def init_db():
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_name VARCHAR(100)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_account VARCHAR(100)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_account_holder VARCHAR(255)",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_caption TEXT",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS chapa_secret_key VARCHAR(255)",            "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_caption TEXT",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_embedding TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE",
