@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 import random
 import asyncio
@@ -23,8 +24,13 @@ def _get_embed_client():
                 _embed_client = genai.Client(api_key=GEMINI_API_KEY)
     return _embed_client
 
-EMBED_MODEL = "text-embedding-004"
-CAPTION_MODEL = "gemini-2.5-flash"
+# text-embedding-004 was retired by Google (404) — gemini-embedding-001 is the
+# current model. Override with GEMINI_EMBED_MODEL / GEMINI_VISION_MODEL env vars.
+# NOTE: vectors embed with a specific model; products embedded before this
+# change carry stale dims and silently stop matching — re-save product photos
+# once after deploying so they re-embed with the new model.
+EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+CAPTION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
 MAX_RETRIES = 2
 
 CAPTION_PROMPT = """Describe this product photo for an Ethiopian shop in 1 short sentence (max 15 words).
@@ -95,7 +101,14 @@ def find_best_match_sync(customer_caption: str, customer_embedding: list[float],
     for p in products:
         if not p.photo_embedding:
             continue
-        embed = json.loads(p.photo_embedding) if isinstance(p.photo_embedding, str) else p.photo_embedding
+        try:
+            embed = json.loads(p.photo_embedding) if isinstance(p.photo_embedding, str) else p.photo_embedding
+        except (ValueError, TypeError):
+            continue
+        if customer_embedding and embed and len(customer_embedding) != len(embed):
+            logger.warning("Embedding dim mismatch (%s vs stored %s) for product %s — re-save its photo to re-embed",
+                           len(customer_embedding), len(embed), getattr(p, "id", "?"))
+            continue
         sim = cosine_similarity(customer_embedding, embed)
         if sim >= threshold:
             results.append({"product": p, "similarity": sim})
@@ -107,12 +120,12 @@ def find_best_match_sync(customer_caption: str, customer_embedding: list[float],
 
 
 async def generate_caption(image_bytes: bytes) -> str:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _generate_caption_sync, image_bytes)
 
 
 async def embed_text(text: str) -> list[float]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _embed_text_sync, text)
 
 
