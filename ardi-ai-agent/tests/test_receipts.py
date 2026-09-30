@@ -11,6 +11,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-key")
 import pytest
 
 from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError
+from receipts import detect_bank_link, normalize_bank_result, extract_bank_receipt
 import bot.handlers as h
 
 
@@ -86,3 +87,53 @@ class TestMatchReceipt:
         biz = SimpleNamespace(order_bank_account="", order_account_holder="")
         ok, _ = h._match_order_receipt(biz, 1200, 1200.0, "anything", "anyone")
         assert ok is False
+
+
+class TestDetectBankLink:
+    def test_cbe_url(self):
+        assert detect_bank_link("https://apps.cbe.com.et:100/?id=FT25211G11JQ21827223")[0] == "cbe"
+
+    def test_dashen_url(self):
+        assert detect_bank_link("https://receipt.dashensuperapp.com/receipt/387ETAP2522000WK")[0] == "dashen"
+
+    def test_telebirr_url(self):
+        assert detect_bank_link("https://transactioninfo.ethiotelecom.et/receipt/CHQ0FJ403O")[0] == "tele"
+
+    def test_bare_tele_id(self):
+        assert detect_bank_link("CHQ0FJ403O") == ("tele", "CHQ0FJ403O")
+
+    def test_bare_ft(self):
+        bank, key = detect_bank_link("FT25211G11JQ")
+        assert bank == "cbe_ft" and key == "FT25211G11JQ"
+
+    def test_generic_link_ignored(self):
+        assert detect_bank_link("https://example.com/receipt.png") is None
+
+    def test_text_ignored(self):
+        assert detect_bank_link("hello there friend") is None
+
+
+class TestNormalizeBankResult:
+    def test_cbe_success(self):
+        out = normalize_bank_result("cbe", {
+            "payer_name": "Abebe", "receiver_name": "Shop",
+            "receiver_account": "1000602869893", "amount": 1250.75,
+            "reference": "FT25211G11JQ", "status": "SUCCESS",
+        })
+        assert out == {"ok": True, "amount": 1250.75, "account": "1000602869893",
+                       "name": "Shop", "ref": "FT25211G11JQ", "reason": ""}
+
+    def test_failed_status(self):
+        out = normalize_bank_result("cbe", {"status": "FAILED", "amount": 100})
+        assert out["ok"] is False
+
+    def test_malformed(self):
+        assert normalize_bank_result("cbe", None)["ok"] is False
+        assert normalize_bank_result("cbe", {})["ok"] is False
+
+
+class TestExtractBankReceipt:
+    async def test_cbe_ft_needs_full_link_without_account(self):
+        out = await extract_bank_receipt("cbe_ft", "FT25211G11JQ", "")
+        assert out["ok"] is False
+        assert "full receipt link" in out["reason"]

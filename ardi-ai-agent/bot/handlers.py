@@ -19,7 +19,7 @@ from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
-from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError
+from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError, detect_bank_link, extract_bank_receipt
 import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
@@ -802,7 +802,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
     state = context.user_data.get("state", "")
     if state == "awaiting_order_payment":
         await update.message.reply_text(
-            "Please send your receipt (photo, PDF, or link) so I can verify it."
+            "Please send your receipt (photo, PDF, or bank receipt link) so I can verify it."
         )
         return
 
@@ -824,13 +824,18 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
     if not context.user_data.get("customer_chat_active"):
         return
 
-    # Don't process text messages during payment wait — except receipt links
+    # Don't process text messages during payment wait — except receipt links/IDs
     if context.user_data.get("state") == "awaiting_order_payment":
-        link = looks_like_url(update.message.text) if context.user_data.get("pending_order") else None
+        text = (update.message.text or "").strip()
+        pending = context.user_data.get("pending_order")
+        bank_hit = detect_bank_link(text) if pending else None
+        if bank_hit:
+            return await handle_bank_receipt(update, context, *bank_hit)
+        link = looks_like_url(text) if pending else None
         if link:
             return await handle_receipt_link(update, context, link)
         await update.message.reply_text(
-            "Please send your receipt — a photo, PDF, or link — so I can confirm your order."
+            "Please send your receipt — a photo, PDF, or bank receipt link — so I can confirm your order."
         )
         return
 
@@ -1007,7 +1012,7 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
                 f"Account: `{business.order_bank_account}`\n"
                 f"Name: {business.order_account_holder or business.order_bank_name}\n\n"
                 f"Then tap *I've Paid* and send your receipt "
-                f"(photo, PDF, or link) — I'll verify it automatically!",
+                f"(photo, PDF, or bank receipt link) — I'll verify it automatically!",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(pay_rows),
             )
@@ -3777,7 +3782,7 @@ async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, 
 
 
 async def ord_paid_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Customer tapped 'I've Paid' — ask for the receipt (photo, PDF, or link)."""
+    """Customer tapped 'I've Paid' — ask for the receipt (photo, PDF, or bank receipt link)."""
     query = update.callback_query
     await query.answer()
     pending = context.user_data.get("pending_order")
@@ -3872,11 +3877,56 @@ async def handle_receipt_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.warning("Review notify failed: %s", e)
 
 
-async def handle_receipt_link(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str):
-    """Verify a receipt URL (image or PDF, SSRF-safe fetch) against the invoice."""
+async def handle_bank_receipt(update, context, bank: str, key: str):
+    """Verify via the bank itself (authoritative), then match the invoice."""
     pending = context.user_data.get("pending_order")
     if not pending or context.user_data.get("state") != "awaiting_order_payment":
         return
+    await update.message.reply_text("🏦 Checking with the bank...")
+
+    async with async_session() as session:
+        biz = await session.execute(select(Business).where(Business.id == pending["business_id"]))
+        biz = biz.scalar_one_or_none()
+    if not biz:
+        await update.message.reply_text("The business is no longer available.")
+        context.user_data.pop("state", None)
+        context.user_data.pop("pending_order", None)
+        return
+
+    verdict = await extract_bank_receipt(bank, key, biz.order_bank_account or "")
+    if not verdict["ok"] and not verdict.get("amount"):
+        await update.message.reply_text(
+            f"⚠️ {verdict.get('reason', 'Bank lookup failed.')}\n\n"
+            "Send a clear photo of the receipt instead.",
+        )
+        return
+
+    ok, issues = _match_order_receipt(biz, pending["total"], verdict["amount"],
+                                      verdict["account"], verdict["name"])
+    if ok:
+        await _confirm_paid_order(update, context, biz, pending["data"],
+                                  verdict["amount"], verdict.get("ref") or "bank",
+                                  pending.get("order_id"))
+    else:
+        _acct = f" to `{verdict['account']}`" if verdict.get("account") else ""
+        await update.message.reply_text(
+            "⚠️ *Bank Receipt Doesn't Match*\n\n"
+            f"Bank shows *{float(verdict['amount'] or 0):.2f} ETB*{_acct}.\n"
+            + "\n".join(issues) +
+            "\n\nIf this is the wrong receipt, send the correct one.",
+            parse_mode="Markdown",
+        )
+
+
+async def handle_receipt_link(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str):
+    """Verify a receipt URL — bank share links go to the bank, anything else
+    is fetched SSRF-safely as image/PDF."""
+    pending = context.user_data.get("pending_order")
+    if not pending or context.user_data.get("state") != "awaiting_order_payment":
+        return
+    bank_hit = detect_bank_link(link)
+    if bank_hit:
+        return await handle_bank_receipt(update, context, *bank_hit)
     await update.message.reply_text("🔗 Opening your receipt link...")
     try:
         kind, data = await fetch_receipt_url(link)
@@ -4007,6 +4057,6 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
         else:
             await update.message.reply_text(
                 f"⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +
-                f"\n\nPlease check and send the correct receipt (photo, PDF, or link).",
+                f"\n\nPlease check and send the correct receipt (photo, PDF, or bank receipt link).",
                 parse_mode="Markdown",
             )

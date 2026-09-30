@@ -1,10 +1,14 @@
-"""Customer receipt intake: photos (OCR elsewhere), PDFs, and links.
+"""Customer receipt intake: bank receipt links (authoritative), photos (OCR
+elsewhere), PDFs, and generic links.
 
-Security model for links (SSRF-safe fetch):
+Security model for generic links (SSRF-safe fetch):
 - https only, no credentials in URL, no ports other than 443
 - hostname must resolve to a PUBLIC IP (private/loopback/link-local/
   multicast/reserved ranges rejected, every resolved address checked)
 - allowlisted content types, hard size cap while streaming, redirect limit
+
+Bank receipt links (CBE/Dashen/Awash/BOA/Zemen/Telebirr share URLs) are
+verified against the bank itself via ethiobank-receipts — stronger than OCR.
 """
 import io
 import ipaddress
@@ -159,3 +163,102 @@ def verify_pdf_receipt(data: bytes, expected_account: str, expected_name: str,
     return {"ok": False, "amount": got_amount,
             "account": digits[0] if digits else "", "name": "",
             "reason": "; ".join(reasons) or "details unclear"}
+
+
+# ─── Bank receipt links (ethiobank-receipts, authoritative) ───────────────
+
+BANK_URL_HINTS = (
+    ("cbe", ("cbe.com.et",)),
+    ("dashen", ("dashensuperapp.com", "dashenbank", "dashen")),
+    ("awash", ("awashbank.com", "awashpay")),
+    ("boa", ("bankofabyssinia.com",)),
+    ("zemen", ("zemenbank.com",)),
+    ("tele", ("ethiotelecom.et", "transactioninfo", "telebirr")),
+)
+# Bare Telebirr receipt IDs customers paste without a link, e.g. CHQ0FJ403O.
+TELE_ID_RE = re.compile(r"^[A-Z0-9]{8,14}$")
+
+
+def detect_bank_link(text: str) -> tuple | None:
+    """Detect a bank receipt share link (or bare Telebirr ID).
+
+    Returns (bank, key) for extract_receipt(), else None.
+    """
+    t = (text or "").strip()
+    if not t or " " in t:
+        return None
+    low = t.lower()
+    if not t.startswith(("http://", "https://")):
+        if low.startswith("ft") and re.match(r"^ft[0-9a-z]+$", low):
+            return ("cbe_ft", t.upper())
+        if TELE_ID_RE.match(t):
+            return ("tele", t)
+        return None
+    host = (urlparse(t).hostname or "").lower()
+    for bank, hints in BANK_URL_HINTS:
+        if any(h in host for h in hints):
+            return (bank, t)
+    return None
+
+
+def normalize_bank_result(bank: str, data: dict) -> dict:
+    """Map ethiobank-receipts output -> {ok, amount, account, name, ref, reason}."""
+    if not isinstance(data, dict):
+        return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                "ref": "", "reason": "Bank lookup returned nothing."}
+    if (data.get("status") or "").upper() not in ("SUCCESS", "COMPLETED", "PAID"):
+        return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                "ref": str(data.get("reference") or ""),
+                "reason": "Bank shows this receipt as not successful."}
+    try:
+        amount = float(data.get("amount") or 0)
+    except (ValueError, TypeError):
+        amount = 0.0
+    return {"ok": amount > 0,
+            "amount": amount,
+            "account": str(data.get("receiver_account") or ""),
+            "name": str(data.get("receiver_name") or ""),
+            "ref": str(data.get("reference") or ""),
+            "reason": "" if amount > 0 else "Bank receipt has no amount."}
+
+
+async def extract_bank_receipt(bank: str, key: str, account_hint: str = "") -> dict:
+    """Verify via the bank itself. Never raises — returns ok=False verdicts.
+
+    Runs the sync scraper off the event loop with a hard timeout. BOA needs
+    Chrome WebDriver and Telebirr often blocks foreign IPs; both surface as
+    clean failures the caller turns into photo-fallback guidance.
+    """
+    import asyncio as _aio
+
+    if bank == "cbe_ft" and len(re.sub(r"\D", "", account_hint or "")) < 8:
+        return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                "ref": key, "reason": "CBE needs the full receipt link."}
+
+    def _run():
+        try:
+            from ethiobank_receipts import extract_receipt
+        except ImportError:
+            return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                    "ref": "", "reason": "Bank verification is unavailable right now."}
+        try:
+            if bank == "cbe_ft":
+                digits = re.sub(r"\D", "", account_hint or "")
+                from ethiobank_receipts.extractors.cbe import extract_cbe_receipt_info_from_ft
+                data = extract_cbe_receipt_info_from_ft(key, digits[-8:])
+                return normalize_bank_result("cbe", data)
+            return normalize_bank_result(bank, extract_receipt(bank, key))
+        except ValueError as e:
+            return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                    "ref": "", "reason": f"Bank rejected the reference ({e})."}
+        except Exception as e:
+            logger.warning("Bank receipt lookup failed (%s): %s", bank, e)
+            return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                    "ref": "", "reason": "Couldn't reach the bank. Send a photo of the receipt instead."}
+
+    try:
+        return await _aio.wait_for(_aio.to_thread(_run), timeout=45)
+    except Exception as e:
+        logger.warning("Bank receipt lookup timed out (%s): %s", bank, e)
+        return {"ok": False, "amount": 0.0, "account": "", "name": "",
+                "ref": "", "reason": "Bank lookup timed out. Send a photo of the receipt instead."}
