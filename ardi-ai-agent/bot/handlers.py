@@ -2459,7 +2459,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if message.text:
         customer_text = message.text
     elif message.photo:
-        logger.info("Business photo message from customer %s on connection %s - not yet supported", customer_chat_id, connection_id)
+        logger.info("Business photo message from customer %s on connection %s — photo receipts in business chats are not supported yet; ask for text",
+                    customer_chat_id, connection_id)
         return
     elif message.voice:
         customer_text = await _transcribe_business_voice(context, connection_id, customer_chat_id, message.voice)
@@ -3004,6 +3005,8 @@ def _check_rate_limit(user_id: int) -> bool:
 
 async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unified router — EVERYTHING goes through the Ardi AI agent with Gemini function calling."""
+    if not update.message or not update.message.text:
+        return
     user_id = update.effective_user.id
     if not _check_rate_limit(user_id):
         await update.message.reply_text("⏳ You're sending messages too fast. Please slow down.")
@@ -3978,6 +3981,10 @@ async def handle_receipt_link(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Business-chat media arrives as update.business_message (message is None).
+    if not update.message:
+        logger.info("Non-message update in receipt router — ignored")
+        return
     msg = update.message if update else None
     is_pdf = bool(msg and msg.document and (
         (msg.document.mime_type or "") == "application/pdf"

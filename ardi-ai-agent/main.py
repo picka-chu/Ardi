@@ -295,7 +295,7 @@ def main():
     # Telegram Business
     app.add_handler(BusinessConnectionHandler(handle_business_connection))
     app.add_handler(MessageHandler(
-        filters.UpdateType.BUSINESS_MESSAGE & (filters.TEXT | filters.VOICE),
+        filters.UpdateType.BUSINESS_MESSAGE & (filters.TEXT | filters.VOICE | filters.PHOTO),
         handle_business_message,
     ))
 
@@ -310,8 +310,10 @@ def main():
 
     # Payment receipts: photos + PDFs (order payments). Chapa covers subscriptions.
     # Forwarded channel files are excluded — they belong to handle_forwarded_channel.
+    # Business messages are excluded — they arrive as update.business_message
+    # (update.message is None there) and are handled/logged separately.
     app.add_handler(MessageHandler(
-        (filters.PHOTO | filters.Document.PDF) & filters.ChatType.PRIVATE & ~filters.FORWARDED,
+        (filters.PHOTO | filters.Document.PDF) & filters.ChatType.PRIVATE & ~filters.FORWARDED & ~filters.UpdateType.BUSINESS_MESSAGE,
         handle_payment_screenshot,
     ))
 
