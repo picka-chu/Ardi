@@ -116,20 +116,42 @@ class TestDetectBankLink:
 class TestNormalizeBankResult:
     def test_cbe_success(self):
         out = normalize_bank_result("cbe", {
-            "payer_name": "Abebe", "receiver_name": "Shop",
-            "receiver_account": "1000602869893", "amount": 1250.75,
-            "reference": "FT25211G11JQ", "status": "SUCCESS",
+            "receiver": "XYZ Trading PLC", "receiver_account": "1000556677",
+            "transferred_amount": "1,250.75", "reference_no": "FT25211G11JQ",
         })
-        assert out == {"ok": True, "amount": 1250.75, "account": "1000602869893",
-                       "name": "Shop", "ref": "FT25211G11JQ", "reason": ""}
+        assert out == {"ok": True, "amount": 1250.75, "account": "1000556677",
+                       "name": "XYZ Trading PLC", "ref": "FT25211G11JQ", "reason": ""}
 
-    def test_failed_status(self):
-        out = normalize_bank_result("cbe", {"status": "FAILED", "amount": 100})
+    def test_tele_success(self):
+        out = normalize_bank_result("tele", {
+            "credited_party": "ABC Market", "credited_party_number": "0930529985",
+            "total_paid": "500.00", "status": "SUCCESS",
+            "reference": "CHQ0FJ403O",
+        })
+        assert out["ok"] is True and out["amount"] == 500.00
+
+    def test_tele_failed_status(self):
+        out = normalize_bank_result("tele", {"status": "FAILED", "total_paid": "100"})
         assert out["ok"] is False
+
+    def test_dashen_success(self):
+        out = normalize_bank_result("dashen", {
+            "beneficiary_name": "FastPay", "beneficiary_account": "2000556677",
+            "amount": "750.25 ETB", "transfer_reference": "387ETAP",
+        })
+        assert out["ok"] is True and out["account"] == "2000556677"
+
+    def test_zemen_prefixed_amount(self):
+        out = normalize_bank_result("zemen", {
+            "Recipient name": "Shop", "Recipient Account No": "5000112233",
+            "Total Amount Paid": "ETB 2,000.00", "Reference No": "ZM1",
+        })
+        assert out["ok"] is True and out["amount"] == 2000.00
 
     def test_malformed(self):
         assert normalize_bank_result("cbe", None)["ok"] is False
         assert normalize_bank_result("cbe", {})["ok"] is False
+        assert normalize_bank_result("weird", {"amount": 5})["ok"] is False
 
 
 class TestExtractBankReceipt:

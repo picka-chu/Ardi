@@ -19,7 +19,8 @@ from sqlalchemy import select, exc as sa_exc
 from db.database import async_session
 from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, CustomerProfile, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
-from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError, detect_bank_link, extract_bank_receipt
+from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError, detect_bank_link, extract_bank_receipt, prep_image
+from textpolish import prepare_incoming, tidy_reply, clean_text
 import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
@@ -845,7 +846,7 @@ async def handle_customer_photo(update: Update, context: ContextTypes.DEFAULT_TY
     # Step 2: embedding similarity fallback
     await update.message.reply_text("📸 Analyzing your photo...")
     file = await photo.get_file()
-    image_bytes = await file.download_as_bytearray()
+    image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
 
     caption = await generate_caption(bytes(image_bytes))
     if not caption:
@@ -1056,11 +1057,12 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         )
 
     history = context.user_data.get("customer_chat_history", [])
-    msg_text = _text_override if _text_override is not None else update.message.text
-    response = await generate_sales_response(business_info, products_list, msg_text, business.ai_tone, history, order_payment_info)
+    _in = prepare_incoming(_text_override if _text_override is not None else update.message.text)
+    msg_text, msg_lang = _in["text"], _in["lang"]
+    response = await generate_sales_response(business_info, products_list, msg_text, business.ai_tone, history, order_payment_info, lang=msg_lang if msg_lang in ("am", "en", "mixed") else "en")
 
     history.append({"role": "user", "text": msg_text})
-    reply_text = response["reply"]
+    reply_text = tidy_reply(response["reply"])
 
     # Handle photo request marker
     photo_url_to_send = None
@@ -2011,7 +2013,7 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await photo.get_file()
     photo_bytes = io.BytesIO()
     await file.download_to_memory(photo_bytes)
-    photo_bytes = photo_bytes.getvalue()
+    photo_bytes = await prep_image(photo_bytes.getvalue())
 
     await update.message.reply_chat_action("typing")
     await update.message.reply_text("🔍 Ardi AI is analyzing your product photo...")
@@ -2073,7 +2075,7 @@ async def _save_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if photo_id and photo_url:
             try:
                 file = await context.bot.get_file(photo_id)
-                image_bytes = await file.download_as_bytearray()
+                image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
                 caption, embedding = await caption_and_embed(bytes(image_bytes))
             except Exception as e:
                 logger.warning("Caption/embed generation failed: %s", e)
@@ -2349,7 +2351,7 @@ async def _import_channel_photo(business_id: int, photo, caption: str):
         file = await photo.get_file()
         buf = io.BytesIO()
         await file.download_to_memory(buf)
-        photo_bytes = buf.getvalue()
+        photo_bytes = await prep_image(buf.getvalue())
     except Exception as e:
         logger.warning("Channel photo download failed: %s", e)
         return None
@@ -2632,7 +2634,7 @@ async def _verify_business_receipt_photo(context, connection_id: str, customer_c
 
     try:
         file = await photo.get_file()
-        image_bytes = bytes(await file.download_as_bytearray())
+        image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
     except Exception as e:
         logger.warning("Business receipt download failed (conn=%s): %s", connection_id, e)
         await _say("Couldn't download that photo. Please try again.")
@@ -2740,7 +2742,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
         pass
     try:
         file = await photo.get_file()
-        image_bytes = bytes(await file.download_as_bytearray())
+        image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
     except Exception as e:
         logger.warning("Business photo download failed (conn=%s): %s", connection_id, e)
         return
@@ -2891,10 +2893,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logger.warning("Typing indicator failed for business message (conn=%s): %s", connection_id, e)
 
-    response = await generate_sales_response(business_info, products_list, customer_text, business.ai_tone, history, order_payment_info)
+    _bin = prepare_incoming(customer_text)
+    customer_text, _blang = _bin["text"], _bin["lang"]
+    response = await generate_sales_response(business_info, products_list, customer_text, business.ai_tone, history, order_payment_info, lang=_blang if _blang in ("am", "en", "mixed") else "en")
 
     history.append({"role": "user", "text": customer_text})
-    reply_text = response["reply"]
+    reply_text = tidy_reply(response["reply"])
 
     # Handle photo request marker
     photo_url_to_send = None
@@ -3477,7 +3481,7 @@ async def keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("replying_to_escalation"):
         return await handle_escalation_reply(update, context)
 
-    text = update.message.text.strip()
+    text = clean_text(update.message.text)
     err = _validate_text(text)
     if err:
         await update.message.reply_text(err)
@@ -4514,7 +4518,7 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
 
     photo = update.message.photo[-1]
     file = await photo.get_file()
-    image_bytes = await file.download_as_bytearray()
+    image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
 
     receipt = await verify_receipt(bytes(image_bytes))
 

@@ -11,6 +11,7 @@ Bank receipt links (CBE/Dashen/Awash/BOA/Zemen/Telebirr share URLs) are
 verified against the bank itself via ethiobank-receipts — stronger than OCR.
 """
 import io
+import asyncio
 import ipaddress
 import logging
 import re
@@ -165,6 +166,37 @@ def verify_pdf_receipt(data: bytes, expected_account: str, expected_name: str,
             "reason": "; ".join(reasons) or "details unclear"}
 
 
+# ─── Fast image prep (downscale for AI + uploads) ──────────────────────────
+
+def _prep_image_sync(data: bytes, max_dim: int) -> bytes:
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGB")
+    w, h = img.size
+    s = min(1.0, max_dim / max(w, h))
+    if s < 1.0:
+        img = img.resize((max(1, int(w * s)), max(1, int(h * s))), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=82)
+    return buf.getvalue()
+
+
+async def prep_image(data: bytes, max_dim: int = 1568) -> bytes:
+    """Downscale + JPEG-encode (Telegram photos can be 10MB+; AI bills pixels).
+
+    Never raises — returns the original bytes on any failure.
+    """
+    if not data:
+        return data
+    try:
+        out = await asyncio.to_thread(_prep_image_sync, data, max_dim)
+        logger.debug("image prep %dKB -> %dKB", len(data) // 1024, len(out) // 1024)
+        return out
+    except Exception:
+        return data
+
+
 # ─── Bank receipt links (ethiobank-receipts, authoritative) ───────────────
 
 BANK_URL_HINTS = (
@@ -201,25 +233,75 @@ def detect_bank_link(text: str) -> tuple | None:
     return None
 
 
+def _parse_amount(raw) -> float:
+    """Parse 'ETB 1,250.00', '750.25 ETB', 1200 -> float (0.0 on garbage)."""
+    if raw is None:
+        return 0.0
+    if isinstance(raw, (int, float)):
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return 0.0
+    s = re.sub(r"[^0-9.,]", "", str(raw)).replace(",", "")
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        return 0.0
+
+
+# Per-bank field maps: (amount_keys, account_keys, name_keys, ref_keys).
+# Verified against the library's extractor sources — each bank returns
+# different names and most return NO status field at all.
+BANK_FIELDS = {
+    "cbe": (("transferred_amount", "total_debited"), ("receiver_account",),
+            ("receiver",), ("reference_no",)),
+    "dashen": (("amount", "total"), ("beneficiary_account",),
+               ("beneficiary_name",), ("transfer_reference", "transaction_reference")),
+    "awash": (("Amount",), ("Beneficiary Account",),
+              ("Beneficiary name",), ("Transaction ID",)),
+    "boa": (("Transferred Amount", "Total Amount"), ("Receiver's Account",),
+            ("Receiver's Name",), ("Transaction Reference",)),
+    "zemen": (("Settled Amount", "Total Amount Paid"), ("Recipient Account No",),
+              ("Recipient Name",), ("Reference No", "Invoice No")),
+    "tele": (("total_paid",), ("credited_party_number",),
+             ("credited_party",), ()),
+}
+TELE_OK = ("success", "successful", "paid", "completed", "approved")
+
+
+def _first(data: dict, keys: tuple) -> str:
+    for k in keys:
+        v = data.get(k)
+        if v:
+            return str(v).strip()
+    return ""
+
+
 def normalize_bank_result(bank: str, data: dict) -> dict:
     """Map ethiobank-receipts output -> {ok, amount, account, name, ref, reason}."""
     if not isinstance(data, dict):
         return {"ok": False, "amount": 0.0, "account": "", "name": "",
                 "ref": "", "reason": "Bank lookup returned nothing."}
-    if (data.get("status") or "").upper() not in ("SUCCESS", "COMPLETED", "PAID"):
-        return {"ok": False, "amount": 0.0, "account": "", "name": "",
-                "ref": str(data.get("reference") or ""),
-                "reason": "Bank shows this receipt as not successful."}
-    try:
-        amount = float(data.get("amount") or 0)
-    except (ValueError, TypeError):
-        amount = 0.0
-    return {"ok": amount > 0,
-            "amount": amount,
-            "account": str(data.get("receiver_account") or ""),
-            "name": str(data.get("receiver_name") or ""),
-            "ref": str(data.get("reference") or ""),
-            "reason": "" if amount > 0 else "Bank receipt has no amount."}
+    fields = BANK_FIELDS.get(bank, ((), (), (), ()))
+    amount = _parse_amount(_first(data, fields[0]))
+    account = _first(data, fields[1])
+    name = _first(data, fields[2])
+    ref = _first(data, fields[3])
+    if bank == "tele":
+        status = str(data.get("status") or "").lower()
+        if not any(w in status for w in TELE_OK):
+            return {"ok": False, "amount": amount, "account": account, "name": name,
+                    "ref": ref, "reason": "Bank shows this receipt as not successful."}
+    if amount <= 0 or not account:
+        missing = []
+        if amount <= 0:
+            missing.append("no amount")
+        if not account:
+            missing.append("no receiver account")
+        return {"ok": False, "amount": amount, "account": account, "name": name,
+                "ref": ref, "reason": "Bank receipt incomplete (%s)." % ", ".join(missing)}
+    return {"ok": True, "amount": amount, "account": account, "name": name,
+            "ref": ref, "reason": ""}
 
 
 async def extract_bank_receipt(bank: str, key: str, account_hint: str = "") -> dict:
@@ -238,7 +320,8 @@ async def extract_bank_receipt(bank: str, key: str, account_hint: str = "") -> d
     def _run():
         try:
             from ethiobank_receipts import extract_receipt
-        except ImportError:
+        except Exception as e:
+            logger.warning("ethiobank-receipts unavailable: %s", e)
             return {"ok": False, "amount": 0.0, "account": "", "name": "",
                     "ref": "", "reason": "Bank verification is unavailable right now."}
         try:
