@@ -844,7 +844,7 @@ async def handle_customer_photo(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
     # Step 2: embedding similarity fallback
-    await update.message.reply_text("📸 Analyzing your photo...")
+    await update.message.reply_text("Got it — let me have a look…\nአየሁት — እንመልከት…")
     file = await photo.get_file()
     image_bytes = await prep_image(bytes(await file.download_as_bytearray()))
 
@@ -2016,7 +2016,7 @@ async def add_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_bytes = await prep_image(photo_bytes.getvalue())
 
     await update.message.reply_chat_action("typing")
-    await update.message.reply_text("🔍 Ardi AI is analyzing your product photo...")
+    await update.message.reply_text("On it — taking a closer look…")
     result = await identify_product(photo_bytes)
 
     product_name = result.get("name", "unknown")
@@ -2639,7 +2639,7 @@ async def _verify_business_receipt_photo(context, connection_id: str, customer_c
         logger.warning("Business receipt download failed (conn=%s): %s", connection_id, e)
         await _say("Couldn't download that photo. Please try again.")
         return True
-    await context.bot.send_message(chat_id=customer_chat_id, text="📄 Reading your receipt...",
+    await context.bot.send_message(chat_id=customer_chat_id, text="Got your receipt — checking it now…\nደረሰኝዎን አግኝቻለሁ — እያረጋገጥኩ ነው…",
                                    business_connection_id=connection_id)
 
     receipt = await verify_receipt(image_bytes)
@@ -2737,7 +2737,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
             return
 
     try:
-        await _send("📸 Analyzing your photo...")
+        await _send("Got it — let me have a look…\nአየሁት — እንመልከት…")
     except Exception:
         pass
     try:
@@ -4302,7 +4302,7 @@ async def handle_receipt_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("That PDF is too large (max 6 MB). Send a photo instead.")
         return
 
-    await update.message.reply_text("📄 Reading your receipt...")
+    await update.message.reply_text("Got your receipt — checking it now…\nደረሰኝዎን አግኝቻለሁ — እያረጋገጥኩ ነው…")
     try:
         file = await doc.get_file()
         raw = await file.download_as_bytearray()
@@ -4346,7 +4346,7 @@ async def handle_receipt_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data.pop("state", None)
     context.user_data.pop("pending_order", None)
     await update.message.reply_text(
-        f"🔍 I couldn't fully verify that receipt ({verdict.get('reason', 'unclear')}).\n\n"
+        f"Hmm, I couldn't fully confirm that receipt ({verdict.get('reason', 'unclear')}).\n\n"
         f"Your order *#{order.id}* is saved and sent to the business for review — "
         "they'll confirm it shortly.",
         parse_mode="Markdown",
@@ -4465,7 +4465,7 @@ async def handle_receipt_link(update: Update, context: ContextTypes.DEFAULT_TYPE
                                   pending.get("order_id"))
     else:
         await update.message.reply_text(
-            f"🔍 That receipt needs owner review ({verdict.get('reason', 'unclear')}). "
+            f"Hmm, that receipt needs a human look ({verdict.get('reason', 'unclear')}). "
             "Send it as a clear photo, or wait — I've notified the business.",
             parse_mode="Markdown",
         )
@@ -4514,7 +4514,7 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
     if is_pdf:
         return await handle_receipt_pdf(update, context)
 
-    await update.message.reply_text("📄 Reading your receipt...")
+    await update.message.reply_text("Got your receipt — checking it now…\nደረሰኝዎን አግኝቻለሁ — እያረጋገጥኩ ነው…")
 
     photo = update.message.photo[-1]
     file = await photo.get_file()
