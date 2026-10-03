@@ -65,9 +65,12 @@ def _public_host(host: str) -> None:
             raise ReceiptError("That link isn't allowed. Send a photo or PDF file instead.")
 
 
-async def fetch_receipt_url(url: str) -> tuple[str, bytes]:
-    """Download a receipt link. Returns (kind, bytes) where kind is image|pdf."""
-    url = (url or "").strip()
+def _check_hop(url: str) -> str:
+    """Validate one URL before any request touches it. Returns the URL.
+
+    Every redirect hop goes through this, so a malicious hop can never be
+    fetched — unlike check-after-fetch designs with a DNS-rebinding window.
+    """
     try:
         parts = urlparse(url)
     except Exception:
@@ -82,26 +85,42 @@ async def fetch_receipt_url(url: str) -> tuple[str, bytes]:
     if parts.port and parts.port != 443:
         raise ReceiptError("That link isn't allowed. Send a photo or PDF file instead.")
     _public_host(host)
+    return url
+
+
+async def fetch_receipt_url(url: str) -> tuple[str, bytes]:
+    """Download a receipt link. Returns (kind, bytes) where kind is image|pdf."""
+    current = _check_hop((url or "").strip())
 
     data = bytearray()
     content_type = ""
     try:
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True,
-                                     max_redirects=MAX_REDIRECTS) as client:
-            async with client.stream("GET", url) as r:
-                if r.status_code != 200:
-                    raise ReceiptError("Couldn't open that link (page not found).")
-                # Re-check the final host after redirects.
-                final_host = (urlparse(str(r.url)).hostname or "").lower()
-                if final_host != host:
-                    _public_host(final_host)
-                content_type = (r.headers.get("content-type", "").split(";")[0].strip().lower())
-                if content_type not in ALLOWED_TYPES:
-                    raise ReceiptError("Link must be an image or PDF receipt.")
-                async for chunk in r.aiter_bytes(65536):
-                    data.extend(chunk)
-                    if len(data) > MAX_RECEIPT_BYTES:
-                        raise ReceiptError("That file is too large (max 6 MB).")
+        # No automatic redirects: each hop is validated by _check_hop first.
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=False) as client:
+            for _ in range(MAX_REDIRECTS + 1):
+                async with client.stream("GET", current) as r:
+                    if r.status_code in (301, 302, 303, 307, 308):
+                        nxt = r.headers.get("location", "")
+                        if not nxt:
+                            raise ReceiptError("Couldn't open that link (bad redirect).")
+                        # Resolve relative redirects against the current URL.
+                        if nxt.startswith("/"):
+                            base = urlparse(current)
+                            nxt = f"{base.scheme}://{base.netloc}{nxt}"
+                        current = _check_hop(nxt)
+                        continue
+                    if r.status_code != 200:
+                        raise ReceiptError("Couldn't open that link (page not found).")
+                    content_type = (r.headers.get("content-type", "").split(";")[0].strip().lower())
+                    if content_type not in ALLOWED_TYPES:
+                        raise ReceiptError("Link must be an image or PDF receipt.")
+                    async for chunk in r.aiter_bytes(65536):
+                        data.extend(chunk)
+                        if len(data) > MAX_RECEIPT_BYTES:
+                            raise ReceiptError("That file is too large (max 6 MB).")
+                    break
+            else:
+                raise ReceiptError("That link redirects too many times.")
     except ReceiptError:
         raise
     except Exception as e:

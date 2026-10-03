@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from sqlalchemy import String, BigInteger, Text, DateTime, Boolean, ForeignKey, Integer, Numeric
+from sqlalchemy import String, BigInteger, Text, DateTime, Boolean, ForeignKey, Integer, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -22,6 +22,7 @@ class Business(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     ai_active: Mapped[bool] = mapped_column(Boolean, default=False)
     ai_tone: Mapped[str] = mapped_column(String(50), default="friendly")
+    ai_name: Mapped[str] = mapped_column(String(50), default="Ardi")
     business_hours_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     business_hours_start: Mapped[str] = mapped_column(String(5), nullable=True)
     business_hours_end: Mapped[str] = mapped_column(String(5), nullable=True)
@@ -78,6 +79,7 @@ class Product(Base):
     photo_url: Mapped[str] = mapped_column(Text, nullable=True)
     photo_caption: Mapped[str] = mapped_column(Text, nullable=True)
     photo_embedding: Mapped[str] = mapped_column(Text, nullable=True)
+    stock_qty: Mapped[int] = mapped_column(Integer, nullable=True)  # None = unlimited
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     business: Mapped["Business"] = relationship("Business", back_populates="products")
@@ -194,3 +196,49 @@ class CustomerProfile(Base):
     phone: Mapped[str] = mapped_column(String(50), nullable=True)
     address: Mapped[str] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class BusinessChatMessage(Base):
+    """Durable per-customer AI chat history for Business chats.
+
+    Replaces the old in-memory dict so history survives restarts and works
+    across instances. Also doubles as the conversation log owners can audit.
+    """
+    __tablename__ = "business_chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_tid: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class VerifiedReceipt(Base):
+    """Every receipt accepted as proof of payment, keyed by (source, reference).
+
+    The same genuine bank receipt can never confirm two orders.
+    """
+    __tablename__ = "verified_receipts"
+    __table_args__ = (UniqueConstraint("source", "reference", name="uq_receipt_source_ref"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # bank id or "ocr"
+    reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class AIPause(Base):
+    """Owner takeover: AI stays silent for this customer until `until`.
+
+    Set when the owner types in the customer's Business chat so the AI
+    never talks over a human. Expires automatically (default 4h).
+    """
+    __tablename__ = "ai_pauses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_tid: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    until: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

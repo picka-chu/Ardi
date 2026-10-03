@@ -15,12 +15,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from sqlalchemy import select, exc as sa_exc
+from sqlalchemy import select, exc as sa_exc, func, desc
 from db.database import async_session
-from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, CustomerProfile, _utcnow
+from db.models import Business, Product, BusinessConnectionModel, User, Order, OrderItem, EscalatedChat, PaymentMethod, CustomerProfile, BusinessChatMessage, VerifiedReceipt, AIPause, _utcnow
 from ai.gemini import identify_product, generate_sales_response, conduct_registration, classify_intent, verify_receipt, transcribe_voice
 from receipts import looks_like_url, fetch_receipt_url, verify_pdf_receipt, ReceiptError, detect_bank_link, extract_bank_receipt, prep_image
-from textpolish import prepare_incoming, tidy_reply, clean_text
+from textpolish import prepare_incoming, tidy_reply, clean_text, sanitize_prompt_text
 import chapa
 from ai.embeddings import generate_caption, embed_text, find_best_match_sync, caption_and_embed
 from storage import upload_product_photo
@@ -141,22 +141,69 @@ def _is_cancel_word(text: str) -> bool:
 
 
 def _invoice_lines(data: dict, products: list) -> tuple:
-    """Build (total, lines) for an invoice from AI order data + catalog."""
+    """Price an order EXACTLY from the catalog. Raises ValueError naming any
+    unknown product — callers must ask the customer to clarify, never 0.00."""
+    from ai.validation import resolve_catalog_item, MAX_ORDER_QTY
     total = Decimal("0.00")
     lines = []
-    for item in data.get("items", []):
-        pname = item.get("product", "")
+    items = data.get("items", [])
+    if not items and data.get("product"):
+        items = [{"product": data.get("product"), "quantity": data.get("quantity", 1)}]
+    if not items:
+        raise ValueError("Order has no items")
+    for item in items:
+        pname = (item.get("product") or "").strip()
+        p = resolve_catalog_item(pname, products)
+        if p is None:
+            raise ValueError(f"Unknown product: {pname!r} — ask the customer to clarify")
         try:
-            qty = int(item.get("quantity", 1))
+            qty = int(float(item.get("quantity", 1)))
         except (ValueError, TypeError):
             qty = 1
-        for p in products:
-            if p.name.lower() == pname.lower():
-                line_total = _money(p.price) * qty
-                total += line_total
-                lines.append(f"• {pname} × {qty} — {line_total:.2f} ETB")
-                break
+        qty = max(1, min(MAX_ORDER_QTY, qty))
+        line_total = _money(p.price) * qty
+        total += line_total
+        lines.append(f"• {p.name} × {qty} — {line_total:.2f} ETB")
     return total, lines
+
+
+async def _prepare_invoice(business, customer_user, data: dict, products: list, context) -> dict:
+    """Validate-priced invoice draft: creates the awaiting_payment order and an
+    optional business-Chapa checkout. Returns {order, ref, total, lines, chapa_url}."""
+    total, lines = _invoice_lines(data, products)
+    order = await _create_order(business, customer_user, data, products)
+    async with async_session() as _s:
+        _o = await _s.get(Order, order.id)
+        _o.status = "awaiting_payment"
+        await _s.commit()
+    ref = f"INV-{business.id}-{order.id}"
+    chapa_url = None
+    chapa_tx = None
+    from db.crypto import decrypt_secret
+    biz_key = decrypt_secret(business.chapa_secret_key).strip()
+    if biz_key.startswith("CHASECK-"):
+        try:
+            from config import MINI_APP_URL as _MURL
+            _base = (_miniapp_base() or (_MURL or "").strip().rstrip("/")) or "https://t.me"
+            _co = await chapa.create_checkout(
+                business, "order", float(total),
+                return_url=f"{_base}/pay/done",
+                callback_url=f"{_base}/api/chapa/webhook",
+                secret=biz_key)
+            if _co:
+                from db.models import OrderPayment
+                async with async_session() as _s2:
+                    _s2.add(OrderPayment(
+                        order_id=order.id, business_id=business.id,
+                        amount=total, tx_ref=_co["tx_ref"],
+                        checkout_url=_co["checkout_url"]))
+                    await _s2.commit()
+                chapa_url = _co["checkout_url"]
+                chapa_tx = _co["tx_ref"]
+        except Exception as e:
+            logger.warning("Order Chapa checkout failed, bank-only invoice: %s", e)
+    return {"order": order, "ref": ref, "total": total, "lines": lines,
+            "chapa_url": chapa_url, "chapa_tx": chapa_tx}
 
 
 async def _customer_profile(business_id: int, telegram_id: int | None) -> dict:
@@ -253,6 +300,40 @@ async def _resolve_pending(context, business_id: int | None, customer_tid: int |
         context.user_data["state"] = "awaiting_order_payment"
         return found
     return None
+
+
+def _receipt_ref_key(source: str, reference) -> str | None:
+    """Normalized dedupe key, or None when the receipt carries no usable ref."""
+    ref = re.sub(r"\s+", "", str(reference or "")).upper()
+    if not ref or ref in ("N/A", "NA", "-", "UNKNOWN"):
+        return None
+    return ref
+
+
+async def _receipt_reused(source: str, reference) -> bool:
+    ref = _receipt_ref_key(source, reference)
+    if not ref:
+        return False
+    async with async_session() as session:
+        row = (await session.execute(
+            select(VerifiedReceipt).where(VerifiedReceipt.source == source,
+                                          VerifiedReceipt.reference == ref)
+        )).scalar_one_or_none()
+        return row is not None
+
+
+async def _record_receipt(source: str, reference, order_id: int | None, amount) -> None:
+    ref = _receipt_ref_key(source, reference)
+    if not ref:
+        return
+    try:
+        async with async_session() as session:
+            session.add(VerifiedReceipt(source=source, reference=ref,
+                                        order_id=order_id, amount=_money(amount)))
+            await session.commit()
+    except Exception as e:
+        # Almost always a repeat insert racing the unique constraint.
+        logger.warning("Receipt record skipped (likely repeat): %s", e)
 
 
 def _validate_quantity(qty_str: str) -> str | None:
@@ -1032,6 +1113,27 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         )
         products = products_result.scalars().all()
 
+    from db.settings import ai_over_cap, bump_ai_usage
+    _over, _first = await ai_over_cap(business.id)
+    if _over:
+        if _first:
+            try:
+                await context.bot.send_message(
+                    business.telegram_chat_id,
+                    f"⚠️ *AI daily limit reached*\n\n{business.name} hit today's AI reply cap. "
+                    "Customers are being told you'll reply personally. "
+                    "Raise it with MAX_AI_CALLS_PER_SHOP_PER_DAY.",
+                    parse_mode="Markdown")
+            except Exception as e:
+                logger.warning("Cap notify failed: %s", e)
+        history = context.user_data.get("customer_chat_history", [])
+        history.append({"role": "assistant", "text": "[AI paused: daily cap reached]"})
+        context.user_data["customer_chat_history"] = history[-20:]
+        await update.message.reply_text(
+            "I'm handling a lot of chats right now — the shop owner will reply to you personally shortly.")
+        return
+    await bump_ai_usage(business.id)
+
     await update.message.reply_chat_action("typing")
 
     business_info = {
@@ -1058,8 +1160,8 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
 
     history = context.user_data.get("customer_chat_history", [])
     _in = prepare_incoming(_text_override if _text_override is not None else update.message.text)
-    msg_text, msg_lang = _in["text"], _in["lang"]
-    response = await generate_sales_response(business_info, products_list, msg_text, business.ai_tone, history, order_payment_info, lang=msg_lang if msg_lang in ("am", "en", "mixed") else "en")
+    msg_text, msg_lang = sanitize_prompt_text(_in["text"]), _in["lang"]
+    response = await generate_sales_response(business_info, products_list, msg_text, business.ai_tone, history, order_payment_info, lang=msg_lang if msg_lang in ("am", "en", "mixed") else "en", ai_name=business.ai_name or "Ardi")
 
     history.append({"role": "user", "text": msg_text})
     reply_text = tidy_reply(response["reply"])
@@ -1122,72 +1224,38 @@ async def handle_customer_message(update: Update, context: ContextTypes.DEFAULT_
         await _save_customer_profile(business.id, customer_tid, data)
 
         if business.orders_enabled and business.order_bank_name and business.order_bank_account:
-            total, lines = _invoice_lines(data, products)
-            # Durable stage: the order exists BEFORE the invoice goes out,
-            # so restarts and cross-chat receipts can always resume it.
-            order = await _create_order(business, update.effective_user, data, products)
-            async with async_session() as _s:
-                _o = await _s.get(Order, order.id)
-                _o.status = "awaiting_payment"
-                await _s.commit()
-            ref = f"INV-{business.id}-{order.id}"
-            context.user_data["pending_order"] = {
+            # Confirm step: exact catalog total first, NOTHING saved yet.
+            try:
+                total, lines = _invoice_lines(data, products)
+            except ValueError as e:
+                history.append({"role": "assistant", "text": f"[Unmatched product: {e}]"})
+                context.user_data["customer_chat_history"] = history[-20:]
+                await update.message.reply_text(
+                    f"{reply_text}\n\n"
+                    f"I couldn't find *{e}* in the shop's catalog. "
+                    "Could you check the name or pick another product?",
+                    parse_mode="Markdown",
+                )
+                return
+            context.user_data["staged_order"] = {
                 "business_id": business.id,
                 "data": data,
-                "total": total,
-                "ref": ref,
-                "order_id": order.id,
+                "total": str(total),
             }
-            context.user_data["state"] = "awaiting_order_payment"
-
-            # Instant option: business-owned Chapa checkout (money settles
-            # directly to the business's Chapa account).
-            chapa_url = None
-            biz_key = (business.chapa_secret_key or "").strip()
-            if biz_key.startswith("CHASECK-"):
-                try:
-                    from config import MINI_APP_URL as _MURL
-                    _base = (_miniapp_base() or (_MURL or "").strip().rstrip("/")) or "https://t.me"
-                    _co = await chapa.create_checkout(
-                        business, "order", float(total),
-                        return_url=f"{_base}/pay/done",
-                        callback_url=f"{_base}/api/chapa/webhook",
-                        secret=biz_key,
-                    )
-                    if _co:
-                        from db.models import OrderPayment
-                        async with async_session() as _s2:
-                            _s2.add(OrderPayment(
-                                order_id=order.id, business_id=business.id,
-                                amount=total, tx_ref=_co["tx_ref"],
-                                checkout_url=_co["checkout_url"],
-                            ))
-                            await _s2.commit()
-                        chapa_url = _co["checkout_url"]
-                        context.user_data["pending_order"]["chapa_tx"] = _co["tx_ref"]
-                except Exception as e:
-                    logger.warning("Order Chapa checkout failed, bank-only invoice: %s", e)
-
-            pay_rows = []
-            if chapa_url:
-                pay_rows.append([InlineKeyboardButton("💳 Pay Online with Chapa", url=chapa_url)])
-            pay_rows.append([InlineKeyboardButton("✅ I've Paid — Send Receipt", callback_data="ord_paid")])
             await update.message.reply_text(
-                f"{reply_text}\n\n"
-                f"🧾 *Invoice {ref}*\n"
+                f"🧾 *Please confirm your order*\n"
                 + "\n".join(lines) + "\n"
                 f"*Total: {total:.2f} ETB*\n\n"
-                f"Send payment to:\n"
-                f"🏦 {business.order_bank_name}\n"
-                f"Account: `{business.order_bank_account}`\n"
-                f"Name: {business.order_account_holder or business.order_bank_name}\n\n"
-                f"Then tap *I've Paid* and send your receipt "
-                f"(photo, PDF, or bank receipt link) — I'll verify it automatically!\n\n"
-                f"_Changed your mind? Send /cancel anytime to stop._",
+                f"Deliver to: {data.get('customer_name', '')}, "
+                f"{data.get('customer_phone', '')}, {data.get('customer_address', '')}\n\n"
+                "_Tap Yes to get your invoice, or /cancel to stop._",
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(pay_rows),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Yes, place order", callback_data="order_confirm_yes")],
+                    [InlineKeyboardButton("✏️ Change", callback_data="order_confirm_no")],
+                ]),
             )
-            history.append({"role": "assistant", "text": f"[Invoice {ref} sent: {total:.2f} ETB, awaiting payment]"})
+            history.append({"role": "assistant", "text": f"[Order summary sent: {total:.2f} ETB, awaiting confirm]"})
             context.user_data["customer_chat_history"] = history[-20:]
             return
 
@@ -1256,49 +1324,40 @@ async def _create_order(business, customer_user, data, products):
 
 
 async def _create_order_in_session(s, business, customer_user, data, products):
-    items_list = data.get("items", [])
-    if not items_list:
-        items_list = [{"product": data.get("product", ""), "quantity": data.get("quantity", 1)}]
-    if not any(item.get("product") for item in items_list):
-        raise ValueError("Order must have at least one item")
-
-    customer_name = (data.get("customer_name") or "").strip()
-    customer_phone = (data.get("customer_phone") or "").strip()
-    customer_address = (data.get("customer_address") or "").strip()
-    if not customer_name or not customer_phone or not customer_address:
+    from ai.validation import validate_order_data, resolve_catalog_item
+    try:
+        clean = validate_order_data(data)
+    except ValueError as e:
+        raise ValueError(str(e))
+    if not clean.delivery_ok():
         raise ValueError("Missing required delivery info (name, phone, address)")
-    if not items_list:
-        raise ValueError("Order must have at least one item")
 
     total = Decimal("0.00")
     validated_items = []
-    for item in items_list:
-        pname = item.get("product", "")
-        qty = int(item.get("quantity", 1))
-        unit_price = Decimal("0.00")
-        for p in products:
-            if p.name.lower() == pname.lower():
-                unit_price = _money(p.price)
-                break
-        total += unit_price * qty
-        validated_items.append((pname, qty, unit_price))
+    for item in clean.items:
+        p = resolve_catalog_item(item.product, products)
+        if p is None:
+            raise ValueError(f"Unknown product: {item.product!r} — ask the customer to clarify")
+        unit_price = _money(p.price)
+        total += unit_price * item.quantity
+        validated_items.append((p.id, item.product, item.quantity, unit_price))
 
     order = Order(
         business_id=business.id,
         customer_telegram_id=customer_user.id if customer_user else None,
-        customer_name=data.get("customer_name", ""),
-        customer_phone=data.get("customer_phone", ""),
-        customer_address=data.get("customer_address", ""),
+        customer_name=clean.customer_name,
+        customer_phone=clean.customer_phone,
+        customer_address=clean.customer_address,
         total_price=total,
     )
     s.add(order)
     await s.flush()
 
     order_items = []
-    for pname, qty, unit_price in validated_items:
+    for pid, pname, qty, unit_price in validated_items:
         oi = OrderItem(
             order_id=order.id,
-            product_id=None,
+            product_id=pid,
             product_name=pname,
             quantity=qty,
             unit_price=unit_price,
@@ -1375,6 +1434,98 @@ async def _notify_escalation(context, business, customer_user, reason, customer_
         )
     except Exception as e:
         logger.error(f"Escalation notification failed: {e}")
+
+
+async def _history_keyboard(business_id: int):
+    """Build the recent-chats keyboard. Returns None when empty."""
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(BusinessChatMessage.customer_tid,
+                   func.max(BusinessChatMessage.id).label("mx"))
+            .where(BusinessChatMessage.business_id == business_id)
+            .group_by(BusinessChatMessage.customer_tid)
+            .order_by(desc("mx")).limit(8)
+        )).all()
+        if not rows:
+            return None
+        keyboard = []
+        for tid, mx in rows:
+            last = (await session.execute(
+                select(BusinessChatMessage)
+                .where(BusinessChatMessage.business_id == business_id,
+                       BusinessChatMessage.customer_tid == tid)
+                .order_by(BusinessChatMessage.id.desc()).limit(1)
+            )).scalar_one_or_none()
+            snippet = ((last.text or "")[:40] + "…") if last and len(last.text or "") > 40 else (last.text if last else "")
+            keyboard.append([InlineKeyboardButton(
+                f"💬 {tid} — {snippet or '…'}", callback_data=f"hist_view_{tid}")])
+        keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")])
+        return InlineKeyboardMarkup(keyboard)
+
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-readable conversation log: recent Business-chat customers."""
+    chat_id = update.effective_chat.id
+    async with async_session() as session:
+        business = await get_business(session, chat_id)
+        if not business:
+            await update.message.reply_text("Register first with /register.")
+            return
+        kb = await _history_keyboard(business.id)
+    if not kb:
+        await update.message.reply_text("No customer conversations yet.",
+                                        reply_markup=back_kb())
+        return
+    await update.message.reply_text("*Recent customer chats*\n\nTap to read the last turns:",
+                                    parse_mode="Markdown", reply_markup=kb)
+
+
+async def hist_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        if not business:
+            await query.edit_message_text("Register first.")
+            return
+        kb = await _history_keyboard(business.id)
+    if not kb:
+        await query.edit_message_text("No customer conversations yet.")
+        return
+    await query.edit_message_text("*Recent customer chats*\n\nTap to read the last turns:",
+                                  parse_mode="Markdown", reply_markup=kb)
+
+
+async def hist_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tid = _parse_id_suffix(query.data, "hist_view_")
+    if tid is None:
+        await query.edit_message_text("Invalid link.")
+        return
+    async with async_session() as session:
+        business = await _require_owner_business(session, update.effective_chat.id)
+        if not business:
+            await query.edit_message_text("Register first.")
+            return
+        rows = (await session.execute(
+            select(BusinessChatMessage)
+            .where(BusinessChatMessage.business_id == business.id,
+                   BusinessChatMessage.customer_tid == tid)
+            .order_by(BusinessChatMessage.id.desc()).limit(8)
+        )).scalars().all()
+        if not rows:
+            await query.edit_message_text("No turns found.")
+            return
+        turns = "\n".join(
+            f"{'👤' if r.role == 'user' else '🤖'} {(r.text or '')[:160]}"
+            for r in reversed(rows))
+    await query.edit_message_text(
+        f"*Chat with {tid}*\n\n{turns}",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Chats", callback_data="hist_list")],
+        ]))
 
 
 async def cmd_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1484,6 +1635,36 @@ async def order_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def _apply_stock_sale(order_id: int) -> list:
+    """Decrement catalog stock for a newly confirmed order.
+
+    Products with stock_qty=None are unlimited. Hitting 0 auto-hides the
+    product; crossing below 6 warns. Returns owner-facing note lines.
+    """
+    notes = []
+    try:
+        async with async_session() as session:
+            items = (await session.execute(
+                select(OrderItem).where(OrderItem.order_id == order_id))).scalars().all()
+            for it in items:
+                if not it.product_id:
+                    continue
+                p = await session.get(Product, it.product_id)
+                if not p or p.stock_qty is None:
+                    continue
+                old = p.stock_qty
+                p.stock_qty = max(0, old - (it.quantity or 1))
+                if old > 0 and p.stock_qty == 0:
+                    p.available = False
+                    notes.append(f"• *{p.name}* is now SOLD OUT (auto-hidden)")
+                elif old > 5 >= p.stock_qty:
+                    notes.append(f"• *{p.name}* low stock: {p.stock_qty} left")
+            await session.commit()
+    except Exception as e:
+        logger.warning("Stock decrement failed: %s", e)
+    return notes
+
+
 async def order_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1510,9 +1691,22 @@ async def order_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         new_status = {"order_confirm": "confirmed", "order_complete": "completed", "order_cancel": "cancelled"}.get(action)
+        stock_notes = []
         if new_status:
+            was = order.status
             order.status = new_status
             await session.commit()
+            if new_status == "confirmed" and was != "confirmed":
+                stock_notes = await _apply_stock_sale(order.id)
+
+    if stock_notes:
+        try:
+            await context.bot.send_message(
+                update.effective_chat.id,
+                "📦 *Stock update*\n" + "\n".join(stock_notes),
+                parse_mode="Markdown")
+        except Exception as e:
+            logger.warning("Stock notify failed: %s", e)
 
     await query.edit_message_text(f"✅ Order #{order_id} marked as *{new_status}*!", parse_mode="Markdown",
                                   reply_markup=InlineKeyboardMarkup([
@@ -2665,7 +2859,6 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
 
     Mirrors the direct-chat photo flow, replying through the business connection.
     """
-    global _business_chat_histories
     logger.info("Business photo message from customer %s on connection %s", customer_chat_id, connection_id)
 
     async def _send(text: str):
@@ -2699,6 +2892,15 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
         )).scalars().all()
         biz_id = business.id
 
+    # Owner's own photo or an active takeover pause: stay silent.
+    _psender = message.from_user.id if message.from_user else None
+    if _psender and _psender == business.telegram_chat_id:
+        await _biz_pause_set(business.id, customer_chat_id, 4)
+        return
+    if await _biz_pause_active(business.id, customer_chat_id):
+        logger.info("AI paused (owner takeover), skipping customer %s", customer_chat_id)
+        return
+
     # STAGE CHECK: an unpaid invoice turns every photo into a receipt first.
     # Resolver is DB-backed, so this survives restarts and works even if the
     # invoice was issued in the other chat. Non-receipt photos fall through
@@ -2718,8 +2920,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
             logger.error("Business message send error: %s", e)
         return
 
-    chat_key = f"{connection_id}_{customer_chat_id}"
-    history = _business_chat_histories.get(chat_key, [])
+    history = await _load_biz_history(business.id, customer_chat_id)
 
     photo = message.photo[-1]
     for p in products:
@@ -2727,7 +2928,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
             history.append({"role": "user", "text": f"[sent photo of {p.name}]"})
             history.append({"role": "assistant",
                             "text": f"[Matched {p.name} by photo]"})
-            _business_chat_histories[chat_key] = history[-20:]
+            await _store_biz_history(business.id, customer_chat_id, history)
             try:
                 await _send(f"I see you're interested in *{p.name}*! "
                             f"{f'It is {p.price:.0f} ETB.' if p.price else ''} "
@@ -2750,7 +2951,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
     caption = await generate_caption(image_bytes)
     if not caption:
         history.append({"role": "user", "text": "[sent a photo]"})
-        _business_chat_histories[chat_key] = history[-20:]
+        await _store_biz_history(business.id, customer_chat_id, history)
         try:
             await _send("I couldn't identify that photo. Could you describe what you're looking for?")
         except Exception as e:
@@ -2774,9 +2975,7 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
         reply = (f"I couldn't find an exact match. Are you looking for something like: {caption}? "
                  "Let me know what you need!")
     history.append({"role": "assistant", "text": reply[:200]})
-    if len(_business_chat_histories) >= BUSINESS_CHAT_HISTORIES_MAX:
-        _business_chat_histories.pop(next(iter(_business_chat_histories)))
-    _business_chat_histories[chat_key] = history[-20:]
+    await _store_biz_history(business.id, customer_chat_id, history)
     try:
         await _send(reply)
     except Exception as e:
@@ -2784,13 +2983,31 @@ async def handle_business_photo(context, connection_id: str, customer_chat_id: i
 
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global _business_chat_histories
     message = update.business_message
     if not message:
         return
 
     connection_id = message.business_connection_id
     customer_chat_id = message.chat_id
+
+    # Owner takeover: the owner's own messages pause the AI for this customer
+    # (4h), and paused customers get silence instead of AI replies.
+    _sender = message.from_user.id if message.from_user else None
+    if _sender:
+        async with async_session() as _ps:
+            _cm = (await _ps.execute(
+                select(BusinessConnectionModel).where(
+                    BusinessConnectionModel.connection_id == connection_id)
+            )).scalar_one_or_none()
+            _pb = await _ps.get(Business, _cm.business_id) if _cm else None
+            if _pb:
+                if _sender == _pb.telegram_chat_id:
+                    await _biz_pause_set(_pb.id, customer_chat_id, 4)
+                    return
+                if await _biz_pause_active(_pb.id, customer_chat_id):
+                    logger.info("AI paused (owner takeover), skipping customer %s",
+                                customer_chat_id)
+                    return
 
     if message.text:
         customer_text = message.text
@@ -2875,8 +3092,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     }
     products_list = [{"name": p.name, "price": p.price, "available": p.available, "photo_caption": p.photo_caption} for p in products]
 
-    chat_key = f"{connection_id}_{customer_chat_id}"
-    history = _business_chat_histories.get(chat_key, [])
+    history = await _load_biz_history(business.id, customer_chat_id)
 
     order_payment_info = ""
     if business.orders_enabled and business.order_bank_name and business.order_bank_account:
@@ -2887,6 +3103,30 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             f"Holder: {business.order_account_holder or business.order_bank_name}\n"
         )
 
+    from db.settings import ai_over_cap, bump_ai_usage
+    _over, _first = await ai_over_cap(business.id)
+    if _over:
+        if _first:
+            try:
+                await context.bot.send_message(
+                    business.telegram_chat_id,
+                    f"⚠️ *AI daily limit reached*\n\n{business.name} hit today's AI reply cap. "
+                    "Raise it with MAX_AI_CALLS_PER_SHOP_PER_DAY.",
+                    parse_mode="Markdown")
+            except Exception as e:
+                logger.warning("Cap notify failed: %s", e)
+        history.append({"role": "assistant", "text": "[AI paused: daily cap reached]"})
+        await _store_biz_history(business.id, customer_chat_id, history)
+        try:
+            await context.bot.send_message(
+                chat_id=customer_chat_id,
+                text="I'm handling a lot of chats right now — the shop owner will reply to you personally shortly.",
+                business_connection_id=connection_id)
+        except Exception as e:
+            logger.error("Business message send error: %s", e)
+        return
+    await bump_ai_usage(business.id)
+
     try:
         await context.bot.send_chat_action(chat_id=customer_chat_id, action="typing",
                                             business_connection_id=connection_id)
@@ -2894,8 +3134,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         logger.warning("Typing indicator failed for business message (conn=%s): %s", connection_id, e)
 
     _bin = prepare_incoming(customer_text)
-    customer_text, _blang = _bin["text"], _bin["lang"]
-    response = await generate_sales_response(business_info, products_list, customer_text, business.ai_tone, history, order_payment_info, lang=_blang if _blang in ("am", "en", "mixed") else "en")
+    customer_text, _blang = sanitize_prompt_text(_bin["text"]), _bin["lang"]
+    response = await generate_sales_response(business_info, products_list, customer_text, business.ai_tone, history, order_payment_info, lang=_blang if _blang in ("am", "en", "mixed") else "en", ai_name=business.ai_name or "Ardi")
 
     history.append({"role": "user", "text": customer_text})
     reply_text = tidy_reply(response["reply"])
@@ -2949,7 +3189,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             missing.append("your delivery address")
         if missing:
             history.append({"role": "assistant", "text": f"[Missing delivery info: {', '.join(missing)}]"})
-            _business_chat_histories[chat_key] = history[-20:]
+            await _store_biz_history(business.id, customer_chat_id, history)
             await _bsend(f"{reply_text}\n\nCould you also tell me {missing[0]}?")
             return
 
@@ -2970,7 +3210,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             context.user_data["state"] = "awaiting_order_payment"
 
             chapa_line = ""
-            biz_key = (business.chapa_secret_key or "").strip()
+            from db.crypto import decrypt_secret
+            biz_key = decrypt_secret(business.chapa_secret_key).strip()
             if biz_key.startswith("CHASECK-"):
                 try:
                     from config import MINI_APP_URL as _MURL
@@ -2994,7 +3235,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                     logger.warning("Order Chapa checkout failed, bank-only invoice: %s", e)
 
             history.append({"role": "assistant", "text": f"[Invoice {ref} sent: {total:.2f} ETB, awaiting payment]"})
-            _business_chat_histories[chat_key] = history[-20:]
+            await _store_biz_history(business.id, customer_chat_id, history)
             await _bsend(
                 f"{reply_text}\n\n"
                 f"🧾 *Invoice {ref}*\n" + "\n".join(lines) + "\n"
@@ -3062,10 +3303,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     else:
         history.append({"role": "assistant", "text": reply_text[:200]})
 
-    # Trim and store history
-    if len(_business_chat_histories) >= BUSINESS_CHAT_HISTORIES_MAX:
-        _business_chat_histories.pop(next(iter(_business_chat_histories)))
-    _business_chat_histories[chat_key] = history[-20:]
+    await _store_biz_history(business.id, customer_chat_id, history)
 
     # Send photo first if AI requested it
     if photo_url_to_send:
@@ -3443,11 +3681,80 @@ def remove_kb():
     return ReplyKeyboardRemove()
 
 
-# ─── Rate limiting ────────────────────────────────────────────────────────────
+# ─── Rate limiting (per-process buckets; fail-open on restart — harmless) ────
 
 _rate_limit_buckets: dict[int, list[float]] = {}
-BUSINESS_CHAT_HISTORIES_MAX = 10_000
-_business_chat_histories: dict[str, list[dict]] = {}
+
+BIZ_HISTORY_KEEP = 20
+
+
+async def _load_biz_history(business_id: int, customer_tid: int | None) -> list:
+    """Last 20 Business-chat turns, oldest first. Empty when unknown."""
+    if not customer_tid:
+        return []
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(BusinessChatMessage)
+            .where(BusinessChatMessage.business_id == business_id,
+                   BusinessChatMessage.customer_tid == customer_tid)
+            .order_by(BusinessChatMessage.id.desc()).limit(BIZ_HISTORY_KEEP)
+        )).scalars().all()
+    return [{"role": r.role, "text": r.text} for r in reversed(rows)]
+
+
+async def _store_biz_history(business_id: int, customer_tid: int | None, history: list) -> None:
+    """Replace the stored turns for this customer (keeps the last 20)."""
+    if not customer_tid:
+        return
+    keep = (history or [])[-BIZ_HISTORY_KEEP:]
+    try:
+        async with async_session() as session:
+            old = await session.execute(
+                select(BusinessChatMessage).where(
+                    BusinessChatMessage.business_id == business_id,
+                    BusinessChatMessage.customer_tid == customer_tid))
+            for r in old.scalars().all():
+                await session.delete(r)
+            for h in keep:
+                session.add(BusinessChatMessage(
+                    business_id=business_id, customer_tid=customer_tid,
+                    role=(h.get("role") or "user")[:20],
+                    text=(h.get("text") or "")[:4000]))
+            await session.commit()
+    except Exception as e:
+        logger.warning("Chat history store failed: %s", e)
+
+
+async def _biz_pause_active(business_id: int, customer_tid: int | None) -> bool:
+    """True while an owner takeover pause is in effect for this customer."""
+    if not customer_tid:
+        return False
+    try:
+        async with async_session() as session:
+            row = (await session.execute(
+                select(AIPause).where(AIPause.business_id == business_id,
+                                      AIPause.customer_tid == customer_tid,
+                                      AIPause.until > _utcnow())
+                .order_by(AIPause.id.desc()).limit(1))).scalar_one_or_none()
+            return row is not None
+    except Exception as e:
+        logger.warning("Pause check failed (fail-open): %s", e)
+        return False
+
+
+async def _biz_pause_set(business_id: int, customer_tid: int | None, hours: int = 4) -> None:
+    """Owner typed in the customer chat — silence the AI for a few hours."""
+    if not customer_tid:
+        return
+    try:
+        async with async_session() as session:
+            session.add(AIPause(business_id=business_id, customer_tid=customer_tid,
+                                until=_utcnow() + datetime.timedelta(hours=hours)))
+            await session.commit()
+            logger.info("AI paused by owner takeover: biz=%s customer=%s (%sh)",
+                        business_id, customer_tid, hours)
+    except Exception as e:
+        logger.warning("Pause set failed: %s", e)
 
 
 def _check_rate_limit(user_id: int) -> bool:
@@ -4268,6 +4575,118 @@ async def _confirm_paid_order(update, context, biz, order_data, receipt_amount, 
     return order
 
 
+def _invoice_text(business, inv) -> tuple:
+    """Render the bank (+optional Chapa) invoice message shared by message
+    sends and callback edits. Returns (text, reply_markup)."""
+    pay_rows = []
+    if inv.get("chapa_url"):
+        pay_rows.append([InlineKeyboardButton("💳 Pay Online with Chapa", url=inv["chapa_url"])])
+    pay_rows.append([InlineKeyboardButton("✅ I've Paid — Send Receipt", callback_data="ord_paid")])
+    text = (
+        f"🧾 *Invoice {inv['ref']}*\n"
+        + "\n".join(inv["lines"]) + "\n"
+        f"*Total: {inv['total']:.2f} ETB*\n\n"
+        f"Send payment to:\n"
+        f"🏦 {business.order_bank_name}\n"
+        f"Account: `{business.order_bank_account}`\n"
+        f"Name: {business.order_account_holder or business.order_bank_name}\n\n"
+        "Then tap *I've Paid* and send your receipt "
+        "(photo, PDF, or bank receipt link) — I'll verify it automatically!\n\n"
+        "_Changed your mind? Send /cancel anytime to stop._"
+    )
+    return text, InlineKeyboardMarkup(pay_rows)
+
+
+async def order_confirm_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Customer confirmed the exact total — now save + invoice."""
+    query = update.callback_query
+    await query.answer()
+    staged = context.user_data.pop("staged_order", None)
+    if not staged:
+        await query.edit_message_text("That order expired. Tell me what you'd like to order!")
+        return
+    async with async_session() as session:
+        business = await session.execute(
+            select(Business).where(Business.id == staged["business_id"]))
+        business = business.scalar_one_or_none()
+    if not business or not (business.orders_enabled and business.order_bank_name
+                            and business.order_bank_account):
+        await query.edit_message_text("That order expired. Tell me what you'd like to order!")
+        return
+    async with async_session() as session:
+        products = (await session.execute(
+            select(Product).where(Product.business_id == business.id))).scalars().all()
+    try:
+        inv = await _prepare_invoice(business, update.effective_user, staged["data"],
+                                     products, context)
+    except ValueError as e:
+        await query.edit_message_text(
+            f"I couldn't find *{e}* in the catalog. Tell me what to change!")
+        return
+    context.user_data["pending_order"] = {
+        "business_id": business.id, "data": staged["data"],
+        "total": inv["total"], "ref": inv["ref"], "order_id": inv["order"].id,
+        **({"chapa_tx": inv["chapa_tx"]} if inv.get("chapa_tx") else {}),
+    }
+    context.user_data["state"] = "awaiting_order_payment"
+    history = context.user_data.get("customer_chat_history", [])
+    history.append({"role": "assistant",
+                    "text": f"[Invoice {inv['ref']} sent: {inv['total']:.2f} ETB, awaiting payment]"})
+    context.user_data["customer_chat_history"] = history[-20:]
+    text, markup = _invoice_text(business, inv)
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=markup)
+
+
+async def order_confirm_no_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.pop("staged_order", None)
+    await query.edit_message_text("No problem — tell me what to change (items, quantities, or delivery info).")
+
+
+async def _send_order_to_review(update, context, biz, pending, reason: str):
+    """Save the order as `review` and hand it to the owner with context.
+
+    Used when a receipt can't be auto-verified (unclear PDF, high-value
+    photo, inconclusive bank data). The owner confirms from /orders.
+    """
+    await _save_customer_profile(
+        biz.id, update.effective_user.id if update.effective_user else None, pending["data"])
+    async with async_session() as session:
+        products = (await session.execute(
+            select(Product).where(Product.business_id == biz.id))).scalars().all()
+    order = await _create_order(biz, update.effective_user, pending["data"], products)
+    async with async_session() as session:
+        o = await session.get(Order, order.id)
+        o.status = "review"
+        await session.commit()
+    context.user_data.pop("state", None)
+    context.user_data.pop("pending_order", None)
+    await update.message.reply_text(
+        f"Hmm, I couldn't fully confirm that receipt ({reason}).\n\n"
+        f"Your order *#{order.id}* is saved and sent to the business for review — "
+        "they'll confirm it shortly.",
+        parse_mode="Markdown",
+    )
+    history = context.user_data.get("customer_chat_history", [])
+    history.append({"role": "assistant", "text": f"[Order #{order.id} awaiting owner review: {reason}]"})
+    context.user_data["customer_chat_history"] = history[-20:]
+    try:
+        await context.bot.send_message(
+            biz.telegram_chat_id,
+            f"🔍 *Receipt needs review — Order #{order.id}*\n\n"
+            f"Customer: {pending['data'].get('customer_name', '')}\n"
+            f"Phone: {pending['data'].get('customer_phone', '')}\n"
+            f"Total: *{float(pending['total']):.2f} ETB*\n"
+            f"Check: {reason}\n\n"
+            "Confirm it from /orders once verified.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.warning("Review notify failed: %s", e)
+    return order
+
+
 async def ord_paid_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Customer tapped 'I've Paid' — ask for the receipt (photo, PDF, or bank receipt link)."""
     query = update.callback_query
@@ -4333,40 +4752,8 @@ async def handle_receipt_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     # Inconclusive — create a review order so the owner can confirm manually.
-    await _save_customer_profile(
-        biz.id, update.effective_user.id if update.effective_user else None, pending["data"])
-    async with async_session() as session:
-        products = (await session.execute(
-            select(Product).where(Product.business_id == biz.id))).scalars().all()
-    order = await _create_order(biz, update.effective_user, pending["data"], products)
-    async with async_session() as session:
-        o = await session.get(Order, order.id)
-        o.status = "review"
-        await session.commit()
-    context.user_data.pop("state", None)
-    context.user_data.pop("pending_order", None)
-    await update.message.reply_text(
-        f"Hmm, I couldn't fully confirm that receipt ({verdict.get('reason', 'unclear')}).\n\n"
-        f"Your order *#{order.id}* is saved and sent to the business for review — "
-        "they'll confirm it shortly.",
-        parse_mode="Markdown",
-    )
-    history = context.user_data.get("customer_chat_history", [])
-    history.append({"role": "assistant", "text": f"[Order #{order.id} awaiting owner review: {verdict.get('reason', '')}]"})
-    context.user_data["customer_chat_history"] = history[-20:]
-    try:
-        await context.bot.send_message(
-            biz.telegram_chat_id,
-            f"🔍 *Receipt needs review — Order #{order.id}*\n\n"
-            f"Customer: {pending['data'].get('customer_name', '')}\n"
-            f"Phone: {pending['data'].get('customer_phone', '')}\n"
-            f"Total: *{float(pending['total']):.2f} ETB*\n"
-            f"Check: {verdict.get('reason', 'unclear')}\n\n"
-            "Confirm it from /orders once verified.",
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        logger.warning("Review notify failed: %s", e)
+    await _send_order_to_review(update, context, biz, pending,
+                                verdict.get("reason", "unclear"))
 
 
 async def handle_bank_receipt(update, context, bank: str, key: str):
@@ -4397,9 +4784,18 @@ async def handle_bank_receipt(update, context, bank: str, key: str):
     ok, issues = _match_order_receipt(biz, pending["total"], verdict["amount"],
                                       verdict["account"], verdict["name"])
     if ok:
-        await _confirm_paid_order(update, context, biz, pending["data"],
-                                  verdict["amount"], verdict.get("ref") or "bank",
-                                  pending.get("order_id"))
+        if await _receipt_reused(bank, verdict.get("ref")):
+            await update.message.reply_text(
+                "⚠️ This receipt was already used for another order.\n\n"
+                "Each receipt works only once — send the correct one.",
+                parse_mode="Markdown",
+            )
+            return
+        order = await _confirm_paid_order(update, context, biz, pending["data"],
+                                          verdict["amount"], verdict.get("ref") or "bank",
+                                          pending.get("order_id"))
+        await _record_receipt(bank, verdict.get("ref"), order.id if order else None,
+                              verdict["amount"])
     else:
         _acct = f" to `{verdict['account']}`" if verdict.get("account") else ""
         await update.message.reply_text(
@@ -4553,9 +4949,25 @@ async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAUL
         ok, issues = _match_order_receipt(biz, amount_needed, amount,
                                           receiver_account, receiver_name)
         if ok:
-            await _confirm_paid_order(update, context, biz, order_data,
-                                      amount, receipt.get("reference", "N/A"),
-                                      pending.get("order_id"))
+            from config import HIGH_VALUE_AUTO_CONFIRM_ETB
+            ref = receipt.get("reference", "N/A")
+            if await _receipt_reused("ocr", ref):
+                await update.message.reply_text(
+                    "⚠️ This receipt was already used for another order.\n\n"
+                    "Each receipt works only once — send the correct one.",
+                    parse_mode="Markdown",
+                )
+                return
+            if float(amount_needed or 0) > HIGH_VALUE_AUTO_CONFIRM_ETB:
+                # Photos can be edited — big OCR totals always get human eyes.
+                await _send_order_to_review(
+                    update, context, biz, pending,
+                    f"high value ({float(amount_needed):.0f} ETB) — photo receipt")
+                return
+            order = await _confirm_paid_order(update, context, biz, order_data,
+                                              amount, ref,
+                                              pending.get("order_id"))
+            await _record_receipt("ocr", ref, order.id if order else None, amount)
         else:
             await update.message.reply_text(
                 f"⚠️ *Receipt Doesn't Match*\n\n" + "\n".join(issues) +

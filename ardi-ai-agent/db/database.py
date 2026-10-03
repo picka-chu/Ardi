@@ -98,6 +98,7 @@ async def init_db():
     async with engine.begin() as conn:
         migration_sql = [
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS ai_tone VARCHAR(50) DEFAULT 'friendly'",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS ai_name VARCHAR(50) DEFAULT 'Ardi'",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS available BOOLEAN NOT NULL DEFAULT TRUE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'guest'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS business_id INTEGER",
@@ -114,8 +115,10 @@ async def init_db():
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_name VARCHAR(100)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_bank_account VARCHAR(100)",
             "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS order_account_holder VARCHAR(255)",
-            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS chapa_secret_key VARCHAR(255)",            "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_caption TEXT",
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS chapa_secret_key VARCHAR(255)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_caption TEXT",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_embedding TEXT",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_qty INTEGER",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE",
         ]
@@ -154,10 +157,10 @@ async def init_db():
         existing_names = {p.name for p in existing.scalars().all()}
         from config import CBE_ACCOUNT_NAME, CBE_ACCOUNT_NUMBER, TELEBIRR_ACCOUNT_NAME, TELEBIRR_ACCOUNT_NUMBER
         to_add = []
-        if "cbe" not in existing_names:
-            to_add.append(PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME, account_number=str(CBE_ACCOUNT_NUMBER), is_active=True))
-        if "telebirr" not in existing_names:
-            to_add.append(PaymentMethod(name="telebirr", bank_name="Telebirr", account_name=TELEBIRR_ACCOUNT_NAME, account_number=str(TELEBIRR_ACCOUNT_NUMBER), is_active=True))
+        if "cbe" not in existing_names and str(CBE_ACCOUNT_NUMBER).strip():
+            to_add.append(PaymentMethod(name="cbe", bank_name="CBE", account_name=CBE_ACCOUNT_NAME or "CBE", account_number=str(CBE_ACCOUNT_NUMBER), is_active=True))
+        if "telebirr" not in existing_names and str(TELEBIRR_ACCOUNT_NUMBER).strip():
+            to_add.append(PaymentMethod(name="telebirr", bank_name="Telebirr", account_name=TELEBIRR_ACCOUNT_NAME or "Telebirr", account_number=str(TELEBIRR_ACCOUNT_NUMBER), is_active=True))
         if to_add:
             seed_session.add_all(to_add)
             try:

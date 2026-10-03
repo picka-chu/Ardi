@@ -147,16 +147,29 @@ class TestSubscriptionFlow:
 # ─── Ordering Flow ──────────────────────────────────────────────────────
 
 class TestOrderingFlow:
+    async def _biz_with_catalog(self, s, chat_id=4001):
+        from db.models import Product
+        b = await _make_test_business(s)
+        Bread = Product(business_id=b.id, name="Bread", price=200)
+        Milk = Product(business_id=b.id, name="Milk", price=100)
+        Eggs = Product(business_id=b.id, name="Eggs", price=20)
+        Tea = Product(business_id=b.id, name="Tea", price=50)
+        s.add_all([Bread, Milk, Eggs, Tea])
+        await s.flush()
+        return b
+
     async def test_create_order(self):
+        from db.models import Product
         async with async_session() as s:
-            b = await _make_test_business(s)
+            b = await self._biz_with_catalog(s)
+            products = (await s.execute(select(Product).where(Product.business_id == b.id))).scalars().all()
             data = {
                 "customer_name": "Abebe",
                 "customer_phone": "+251911000001",
                 "customer_address": "Bole, Addis",
                 "items": [{"product": "Bread", "quantity": 2}],
             }
-            order = await create_order(b, None, data, [], session=s)
+            order = await create_order(b, None, data, products, session=s)
             assert order.id is not None
             assert order.business_id == b.id
             assert order.customer_name == "Abebe"
@@ -169,10 +182,14 @@ class TestOrderingFlow:
             assert len(items) == 1
             assert items[0].product_name == "Bread"
             assert items[0].quantity == 2
+            assert items[0].product_id is not None
+            assert float(order.total_price) == 400.0
 
     async def test_create_order_multiple_items(self):
+        from db.models import Product
         async with async_session() as s:
-            b = await _make_test_business(s)
+            b = await self._biz_with_catalog(s)
+            products = (await s.execute(select(Product).where(Product.business_id == b.id))).scalars().all()
             data = {
                 "customer_name": "Tigist",
                 "customer_phone": "+251911000002",
@@ -182,18 +199,29 @@ class TestOrderingFlow:
                     {"product": "Eggs", "quantity": 12},
                 ],
             }
-            order = await create_order(b, None, data, [], session=s)
+            order = await create_order(b, None, data, products, session=s)
             result = await s.execute(
                 select(OrderItem).where(OrderItem.order_id == order.id)
             )
             items = result.scalars().all()
             assert len(items) == 2
+            assert float(order.total_price) == 100.0 + 12 * 20.0
 
     async def test_order_without_delivery_info_raises(self):
         with pytest.raises(ValueError, match="Missing required"):
             async with async_session() as s:
-                b = await _make_test_business(s)
-                await create_order(b, None, {"customer_name": "", "customer_phone": "", "customer_address": "", "items": [{"product": "Tea", "quantity": 1}]}, [], session=s)
+                b = await self._biz_with_catalog(s)
+                from db.models import Product
+                products = (await s.execute(select(Product).where(Product.business_id == b.id))).scalars().all()
+                await create_order(b, None, {"customer_name": "", "customer_phone": "", "customer_address": "", "items": [{"product": "Tea", "quantity": 1}]}, products, session=s)
+
+    async def test_unknown_product_raises(self):
+        with pytest.raises(ValueError, match="Unknown product"):
+            async with async_session() as s:
+                b = await self._biz_with_catalog(s)
+                from db.models import Product
+                products = (await s.execute(select(Product).where(Product.business_id == b.id))).scalars().all()
+                await create_order(b, None, {"customer_name": "K", "customer_phone": "1", "customer_address": "A", "items": [{"product": "Nope", "quantity": 1}]}, products, session=s)
 
     async def test_no_items_raises(self):
         with pytest.raises(ValueError, match="at least one item"):

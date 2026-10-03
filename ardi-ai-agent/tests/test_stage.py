@@ -27,10 +27,11 @@ class TestInvoiceLines:
         assert total == Decimal("90")
         assert len(lines) == 1 and "90.00" in lines[0]
 
-    def test_unknown_product_skipped(self):
-        total, lines = h._invoice_lines(
-            {"items": [{"product": "Ghost", "quantity": 1}]}, [_prod("Bread", 45)])
-        assert total == Decimal("0.00") and lines == []
+    def test_unknown_product_raises(self):
+        import pytest as _pt
+        with _pt.raises(ValueError, match="Unknown product"):
+            h._invoice_lines(
+                {"items": [{"product": "Ghost", "quantity": 1}]}, [_prod("Bread", 45)])
 
 
 class TestStageWords:

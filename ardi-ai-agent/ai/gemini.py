@@ -28,7 +28,15 @@ def _get_client():
     if _client is None:
         with _client_lock:
             if _client is None:
-                _client = genai.Client(api_key=GEMINI_API_KEY)
+                # Hard HTTP timeout so one slow model call can't stall every
+                # shop (updates now run concurrently, but each still waits).
+                try:
+                    _client = genai.Client(
+                        api_key=GEMINI_API_KEY,
+                        http_options=types.HttpOptions(timeout=60000),
+                    )
+                except TypeError:
+                    _client = genai.Client(api_key=GEMINI_API_KEY)
     return _client
 
 def _load_models() -> list:
@@ -61,13 +69,22 @@ TONES = {
     "witty": "Be playful and clever — light humor, fun energy. Keep it enjoyable but still helpful.",
 }
 
-# ─── Ardi AI Identity (shared mechanism for all interactions) ──────────────
+# ─── Assistant identity (honest by policy) ─────────────────────────────────
+# Customers must never be misled into thinking they talk to a human.
+# {assistant_name} is set per shop by its owner (default "Ardi").
 
-ARD_IDENTITY = """You are Ardi AI, an Ethiopian sales automation assistant built by Ardi Technologies.
-You are Ardi — not Google Gemini, not an AI model, not a chatbot. You are Ardi.
-Never mention Gemini, Google, OpenAI, artificial intelligence, or any technical terminology.
+ARD_IDENTITY = """You are {assistant_name}, an AI sales assistant for an Ethiopian business.
+You are software, not a person. Never claim to be human, the owner, or staff.
+If asked who you are, say you are {assistant_name}, the shop's AI assistant.
+Never mention Gemini, Google, OpenAI, or any model/provider names — but never
+hide that you are an AI assistant when asked directly.
 Respond in the user's language — Amharic, English, or mixed — whatever they use.
 Be helpful, accurate, and direct."""
+
+
+def ardi_identity(assistant_name: str = "Ardi") -> str:
+    name = (assistant_name or "Ardi").strip() or "Ardi"
+    return ARD_IDENTITY.format(assistant_name=name)
 
 
 def _call_model_sync(contents, model_index=0, attempt=0, system_instruction=None):
@@ -102,7 +119,7 @@ def _call_model_sync(contents, model_index=0, attempt=0, system_instruction=None
 
 
 def _identify_product_sync(image_bytes: bytes) -> dict:
-    prompt = f"""{ARD_IDENTITY}
+    prompt = f"""{ardi_identity()}
 
 You are a product recognition system for Ethiopian businesses.
 Look at this product image and return ONLY a JSON object:
@@ -243,7 +260,7 @@ def _registration_chat_sync(conversation: list) -> dict:
                 parts=[types.Part(text="The user wants to register a new business. Greet them and ask for their business name.")],
                 role="user",
             )]
-        text = _call_model_sync(contents, system_instruction=f"{ARD_IDENTITY}\n\n{REGISTRATION_SYSTEM_PROMPT}")
+        text = _call_model_sync(contents, system_instruction=f"{ardi_identity()}\n\n{REGISTRATION_SYSTEM_PROMPT}")
         if "===COMPLETE===" in text:
             parts = text.split("===COMPLETE===")
             reply = parts[0].strip()
@@ -292,7 +309,8 @@ FORBIDDEN ACTIONS (never do any of these):
 - Never ask the customer to create, register, add, or edit anything.
 - Never offer to add or remove products from the shop.
 - Never make up product names, prices, images, or details not listed above.
-- Never mention technical terms like "AI", "system", "bot", "registration", "database".
+- Never use technical jargon like "system", "registration", or "database".
+  You MAY say you are an AI assistant when asked — but never pretend to be human.
 - Never ask "What would you like to order?" or "What do you want?" — you are mid-conversation.
 
 PHOTO REQUESTS: If the customer asks to see a product photo and a photo URL is listed for that product above, end your reply with:
@@ -308,7 +326,8 @@ RULES:
 - If a product is unavailable, say it's out of stock. Suggest an alternative only if the list has one.
 - If asked about something not in the product list, say you don't have it. Do not invent products.
 - Only answer what was asked. Do not add extra info, suggestions, or questions unless needed for the order flow.
-- Never mention Gemini, Google, or AI. You are Ardi.
+- Never mention Gemini, Google, or OpenAI. If asked who you are, say you are {assistant_name}, the shop's AI assistant — never a human, never the owner.
+- HUMAN HANDOFF: if the customer asks to talk to a person, a human, or the owner — or says you are wrong or unhelpful — stop and end with ===ESCALATE=== immediately so a human takes over.
 
 ORDER FLOW (follow exactly when the customer wants to buy):
 Step 1 - Collect items. When they ask for a product, confirm and add to cart. Ask "What else?" only once per item.
@@ -366,7 +385,7 @@ def _parse_json_safely(text: str) -> dict | None:
         return None
 
 
-def _sales_chat_sync(business_info: dict, products_text: str, products_unavailable_text: str, customer_message: str, tone: str, history_text: str = "", order_payment_info: str = "", lang: str = "en") -> dict:
+def _sales_chat_sync(business_info: dict, products_text: str, products_unavailable_text: str, customer_message: str, tone: str, history_text: str = "", order_payment_info: str = "", lang: str = "en", ai_name: str = "Ardi") -> dict:
     try:
         tone_guide = TONES.get(tone, TONES["friendly"])
 
@@ -375,7 +394,8 @@ def _sales_chat_sync(business_info: dict, products_text: str, products_unavailab
 
         lang_instruction = "The customer prefers Amharic. Respond in Amharic whenever possible." if lang == "am" else "Respond naturally in whichever language the customer uses."
         prompt = SALES_SYSTEM_PROMPT.format(
-            ARD_IDENTITY=ARD_IDENTITY,
+            ARD_IDENTITY=ardi_identity(business_info.get("assistant_name", ai_name)),
+            assistant_name=_escape(business_info.get("assistant_name", ai_name)),
             business_name=_escape(business_info.get("name", "the business")),
             description=_escape(business_info.get("description", "")),
             address=_escape(business_info.get("address", "")),
@@ -414,7 +434,7 @@ def _sales_chat_sync(business_info: dict, products_text: str, products_unavailab
         return {"type": "chat", "reply": "Sorry, give me a moment — what did you ask again?"}
 
 
-async def generate_sales_response(business_info: dict, products: list, customer_message: str, tone: str = "friendly", history: list | None = None, order_payment_info: str = "", lang: str = "en") -> dict:
+async def generate_sales_response(business_info: dict, products: list, customer_message: str, tone: str = "friendly", history: list | None = None, order_payment_info: str = "", lang: str = "en", ai_name: str = "Ardi") -> dict:
     available = [p for p in products if p.get("available", True)]
     unavailable = [p for p in products if not p.get("available", True)]
 
@@ -447,8 +467,8 @@ async def generate_sales_response(business_info: dict, products: list, customer_
             lines.append(f"{role}: {m['text'][:200]}")
         history_text = "\n".join(lines)
 
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sales_chat_sync, business_info, products_text, products_unavailable_text, customer_message, tone, history_text, order_payment_info, lang)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sales_chat_sync, business_info, products_text, products_unavailable_text, customer_message, tone, history_text, order_payment_info, lang, ai_name)
 
 
 # ─── Intent-Based Agent ──────────────────────────────────────────────
@@ -569,7 +589,7 @@ def _build_intent_prompt(context: dict) -> str:
     """Build the intent agent prompt filtered by the user's role."""
     role = context.get("role", "guest")
     state = context.get("state", "idle")
-    lines = [f"{ARD_IDENTITY}"]
+    lines = [f"{ardi_identity()}"]
     lines.append("")
     lines.append(f"You are the AI assistant for {context.get('business_name', 'Ardi AI')}.")
     lines.append("")

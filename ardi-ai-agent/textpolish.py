@@ -23,7 +23,8 @@ def detect_lang(text: str) -> str:
     eth = len(_ETHIOPIC_RE.findall(t))
     lat = len(_LATIN_RE.findall(t))
     if eth and lat:
-        return "mixed" if min(eth, lat) >= 3 else ("am" if eth > lat else "en")
+        # A lone brand/code (CBE, FT…) doesn't make a message mixed.
+        return "mixed" if min(eth, lat) >= 4 else ("am" if eth > lat else "en")
     if eth:
         return "am"
     if lat:
@@ -62,3 +63,29 @@ def tidy_reply(text: str) -> str:
     if not text:
         return ""
     return _BLANK_LINES_RE.sub("\n\n", text.strip())
+
+
+_MARKER_RE = re.compile(r"===\s*[A-Za-z_]*\s*===|={3,}")
+_INJECTION_RES = [
+    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.I),
+    re.compile(r"disregard\s+(all\s+)?(previous|prior|above)\s+instructions?", re.I),
+    re.compile(r"you\s+are\s+now\s+[a-z ]{1,40}?(assistant|bot|ai|human|owner)", re.I),
+    re.compile(r"system\s*:\s*new\s+instructions?", re.I),
+    re.compile(r"\[system\s*:[^\]]{0,200}\]", re.I),
+]
+
+
+def sanitize_prompt_text(text: str) -> str:
+    """Strip control markers (===ORDER=== etc.) and common instruction-override
+    phrases from CUSTOMER input before it enters any AI prompt.
+
+    Prices/totals are computed in code anyway — this only stops the model from
+    obeying smuggled instructions. Amharic text is untouched (patterns are
+    Latin-script specific).
+    """
+    if not text:
+        return ""
+    t = _MARKER_RE.sub(" ", text)
+    for rx in _INJECTION_RES:
+        t = rx.sub(" ", t)
+    return _WS_RE.sub(" ", t).strip()

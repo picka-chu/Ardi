@@ -30,6 +30,11 @@ jobs:
       - name: Compile check
         run: python -m compileall -q .
 
+      - name: Lint (errors and undefined names only)
+        run: |
+          pip install ruff
+          ruff check --isolated --select E9,F63,F7,F82 .
+
       - name: Run tests
         env:
           TELEGRAM_TOKEN: "123:fake-ci"

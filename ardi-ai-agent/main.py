@@ -24,7 +24,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ConversationHandler,
     BusinessConnectionHandler,
-    DictPersistence,
+    PicklePersistence,
     ContextTypes,
     filters,
 )
@@ -76,6 +76,11 @@ from bot.handlers import (
     order_view_callback,
     order_status_callback,
     ord_paid_callback,
+    order_confirm_yes_callback,
+    order_confirm_no_callback,
+    cmd_history,
+    hist_view_callback,
+    hist_list_callback,
     # Reply Keyboard
     keyboard_handler,
     # Business Integration
@@ -157,8 +162,49 @@ async def post_init(app):
         import time
         miniapp.bot_last_heartbeat = time.monotonic()
 
+    # Weekly owner report: Mondays 09:00 UTC (12:00 EAT).
+    async def _weekly(_context):
+        try:
+            import datetime as _dt
+            from db.database import async_session as _sess
+            from db.models import Business, Order
+            from sqlalchemy import select, func
+            now = _dt.datetime.now(_dt.timezone.utc)
+            cut = now - _dt.timedelta(days=7)
+            rows = []
+            async with _sess() as s:
+                for b in (await s.execute(select(Business))).scalars().all():
+                    o7 = (await s.execute(select(func.count(Order.id)).where(
+                        Order.business_id == b.id, Order.created_at >= cut))).scalar() or 0
+                    rev = (await s.execute(select(func.coalesce(func.sum(Order.total_price), 0)).where(
+                        Order.business_id == b.id,
+                        Order.status.in_(["confirmed", "completed"]),
+                        Order.created_at >= cut))).scalar() or 0.0
+                    pend = (await s.execute(select(func.count(Order.id)).where(
+                        Order.business_id == b.id, Order.status == "pending"))).scalar() or 0
+                    rows.append((b.telegram_chat_id, b.name, o7, float(rev), pend,
+                                 b.subscription_status or "trial"))
+            for chat_id, name, o7, rev, pend, sub in rows:
+                try:
+                    await app.bot.send_message(
+                        chat_id,
+                        f"📊 *Weekly report — {name}*\n\n"
+                        f"• Orders (7d): *{o7}*\n"
+                        f"• Revenue (7d): *{rev:,.2f} ETB*\n"
+                        f"• Awaiting confirmation: *{pend}*\n"
+                        f"• Subscription: {sub}\n\n"
+                        "Use /orders, /catalog and /history to dig in.",
+                        parse_mode="Markdown")
+                except Exception as e:
+                    logger.warning("Weekly report failed for %s: %s", chat_id, e)
+            logger.info("Weekly reports sent to %d businesses", len(rows))
+        except Exception as e:
+            logger.error("Weekly report job failed: %s", e)
+
     if app.job_queue:
         app.job_queue.run_repeating(_heartbeat, interval=30, first=10)
+        import datetime as _dtmod
+        app.job_queue.run_daily(_weekly, time=_dtmod.time(9, 0), days=(0,))
     else:
         logger.warning("No JobQueue available — heartbeat disabled. Install python-telegram-bot[job-queue]")
         # Fallback: manual periodic task via asyncio
@@ -176,15 +222,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     require_secrets()
-    persistence = DictPersistence()
+    # File persistence survives crashes (Render disk is ephemeral, so deploys
+    # still reset it — payment/chat stage additionally lives in the DB).
+    persistence = PicklePersistence(filepath="ardi_conversations.pkl")
 
     app = (
         ApplicationBuilder()
         .token(TELEGRAM_TOKEN)
         .post_init(post_init)
         .persistence(persistence)
+        .concurrent_updates(True)
         .build()
     )
+
     app.add_error_handler(error_handler)
 
     # AI-powered registration conversation
@@ -249,6 +299,7 @@ def main():
     app.add_handler(CommandHandler("connectchannel", cmd_connectchannel))
     app.add_handler(CommandHandler("scanchannel", scan_channel))
     app.add_handler(CommandHandler("orders", cmd_orders))
+    app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("sync", cmd_sync_connection))
     app.add_handler(CommandHandler("hours", cmd_business_hours))
     app.add_handler(CommandHandler("trial", cmd_trial))
@@ -335,6 +386,10 @@ def main():
     app.add_handler(CallbackQueryHandler(order_view_callback, pattern="^order_view_"))
     app.add_handler(CallbackQueryHandler(order_status_callback, pattern="^order_(confirm|complete|cancel)_"))
     app.add_handler(CallbackQueryHandler(ord_paid_callback, pattern="^ord_paid$"))
+    app.add_handler(CallbackQueryHandler(hist_view_callback, pattern="^hist_view_"))
+    app.add_handler(CallbackQueryHandler(hist_list_callback, pattern="^hist_list$"))
+    app.add_handler(CallbackQueryHandler(order_confirm_yes_callback, pattern="^order_confirm_yes$"))
+    app.add_handler(CallbackQueryHandler(order_confirm_no_callback, pattern="^order_confirm_no$"))
     app.add_handler(CallbackQueryHandler(catalog_callback, pattern="^cat_"))
     app.add_handler(CallbackQueryHandler(hours_toggle_callback, pattern="^hours_toggle$"))
     app.add_handler(CallbackQueryHandler(escalation_callback, pattern="^escalation_"))

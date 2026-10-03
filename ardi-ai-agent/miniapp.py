@@ -26,13 +26,22 @@ def _sweep_dash_tokens() -> None:
         _dash_tokens.pop(tok, None)
 
 
+def _dash_secrets_ok() -> bool:
+    return bool(((ADMIN_API_KEY or BOT_TOKEN) or "").strip())
+
+
 def _dash_hmac_key() -> bytes:
     # Stable across restarts (unlike the in-memory dict below).
-    return (ADMIN_API_KEY or BOT_TOKEN or "ardi-dev").encode()
+    # Callers check _dash_secrets_ok() first — never sign with a fallback.
+    return ((ADMIN_API_KEY or BOT_TOKEN) or "").strip().encode()
 
 
 def generate_dash_token(telegram_id: int) -> str:
     # Stateless: tid.exp.sig — survives restarts/redeploys (1h TTL).
+    # Fail closed with NO secrets configured (empty token validates nowhere).
+    if not _dash_secrets_ok():
+        logger.error("Refusing dashboard token: no ADMIN_API_KEY/TELEGRAM_TOKEN configured")
+        return ""
     exp = int(time.time()) + DASH_TOKEN_TTL
     body = f"{telegram_id}.{exp}"
     sig = hmac.new(_dash_hmac_key(), body.encode(), hashlib.sha256).hexdigest()[:32]
@@ -40,6 +49,8 @@ def generate_dash_token(telegram_id: int) -> str:
 
 
 def validate_dash_token(token: str) -> int | None:
+    if not token or not _dash_secrets_ok():
+        return None
     # 1) Stateless format.
     try:
         parts = (token or "").split(".")
@@ -595,6 +606,12 @@ BIZ_HTML = r"""<!DOCTYPE html>
   <div class="sec-t">Ardi AI</div>
   <div class="card" style="padding:4px 16px">
     <div class="set-row"><div class="tx"><div class="t1" data-i="ai_reply">AI auto-reply</div><div class="t2" id="aiState">—</div></div><div class="tgl" id="aiTgl" onclick="toggleAi()"></div></div>
+    <div class="set-row" onclick="toggleBox('nameBox')"><div class="tx"><div class="t1" data-i="ai_name">Assistant name</div><div class="t2" id="aiNameV">—</div></div><span style="color:var(--hint)">›</span></div>
+    <div id="nameBox" hidden style="padding:12px 0">
+      <div style="font-size:12px;color:var(--hint);margin-bottom:8px" data-i="ai_name_s">What customers hear when they ask who this is. It always says it's an AI assistant.</div>
+      <input class="inp" id="aiName" maxlength="30" placeholder="Ardi">
+      <button class="btn b-s" onclick="saveAiName()" data-i="save">Save</button>
+    </div>
     <div class="set-row" onclick="toggleBox('toneBox')"><div class="tx"><div class="t1" data-i="tone">Conversation tone</div><div class="t2" id="toneName">—</div></div><span style="color:var(--hint)">›</span></div>
     <div id="toneBox" hidden style="padding:12px 0"><div class="tone-grid" id="toneGrid"></div></div>
     <div class="set-row" onclick="toggleBox('hrsBox')"><div class="tx"><div class="t1" data-i="hours">Business hours</div><div class="t2" id="hrsSum">—</div></div><span style="color:var(--hint)">›</span></div>
@@ -673,10 +690,10 @@ search_ph:'Search products…',f_all:'All',f_in:'In stock',f_out:'Out of stock',
 pay_to:'Send payment to',receipt:'Payment receipt',up_t:'Tap to upload screenshot',submit_receipt:'Submit payment proof',
 m_biz:'Business',profile:'Store profile',share_store:'Share my store',share_s:'Link for customers',channel:'Sales channel',channel_s:'Auto-import from Telegram channel',
 channel_h:'1. Add the Ardi bot as admin to your channel<br>2. Forward any channel message to the bot<br>3. New photo posts with prices are saved as products automatically.',
-ai_reply:'AI auto-reply',tone:'Conversation tone',hours:'Business hours',hours_on:'Enable business hours',offline:'Offline message',
-bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',remove:'Remove',accept_orders:'Accept orders',accept_orders_s:'ለኢንቮይስ እና የመስመር ላይ ክፍያ ያስፈልጋል',orders_on:'Orders ON — invoices will be sent',orders_off:'Orders OFF',m_pay:'Payments',chapa_bal:'Chapa received',chapa_bal_s:'Settles directly to your Chapa account',chapa_key:'Chapa secret key (for customer checkouts)',chapa_key_s:'From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.',chapa_badkey:'Key must start with CHASECK-',chapa_rm_q:'Remove your Chapa key? Online checkout turns off.',chapa_on:'Online checkout is ON',chapa_off:'Online checkout is off',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
+ai_reply:'AI auto-reply',ai_name:'Assistant name',ai_name_s:'What customers hear when they ask who this is. It always says it is an AI assistant.',tone:'Conversation tone',hours:'Business hours',hours_on:'Enable business hours',offline:'Offline message',
+bank:'Bank name',acc_no:'Account number',acc_name:'Account holder',save:'Save',remove:'Remove',accept_orders:'Accept orders',accept_orders_s:'Required for invoices + online checkout',orders_on:'Orders ON — invoices will be sent',orders_off:'Orders OFF',m_pay:'Payments',chapa_bal:'Chapa received',chapa_bal_s:'Settles directly to your Chapa account',chapa_key:'Chapa secret key (for customer checkouts)',chapa_key_s:'From dashboard.chapa.co. Money goes straight to your Chapa account — Ardi never holds it.',chapa_badkey:'Key must start with CHASECK-',chapa_rm_q:'Remove your Chapa key? Online checkout turns off.',chapa_on:'Online checkout is ON',chapa_off:'Online checkout is off',m_app:'App',lang:'Language / ቋንቋ',plan:'Subscription plan',
 tab_home:'Home',tab_cat:'Catalog',tab_ord:'Orders',tab_plan:'Plan',tab_more:'More',p_name:'Store name',p_phone:'Phone',p_addr:'Address',p_desc:'Description',
-products:'Products',orders:'Orders',revenue:'Revenue',pending:'Pending',in_stock:'In stock',out:'Out of stock',edit:'Edit product',add_p:'Add product',
+products:'Products',orders:'Orders',revenue:'Revenue',pending:'Pending',in_stock:'In stock',out:'Out of stock',stock:'Stock (optional)',stock_ph:'Blank = unlimited',enter_stock:'Enter a valid stock number',edit:'Edit product',add_p:'Add product',
 photo:'Photo',change:'Change',pname_ph:'e.g. Fresh Avocado',price_ph:'Price in ETB',save_p:'Save product',delete:'Delete product',cancel:'Cancel',
 del_q:'Delete this product? This cannot be undone.',no_prod:'No products yet',no_prod_s:'Add your first product to start selling.',add_first:'Add product',
 no_ord:'No orders',no_ord_s:'New customer orders will appear here.',customer:'Customer',phone:'Phone',address:'Address',total:'Total',status:'Status',date:'Date',items:'Items',
@@ -696,9 +713,9 @@ pay_to:'ክፍያ ይላኩ ወደ',receipt:'የክፍያ ደረሰኝ',up_t:'�
 m_biz:'ንግድ',profile:'የሱቅ መገለጫ',share_store:'ሱቄን አጋራ',share_s:'ለደንበኞች ሊንክ',channel:'የሽያጭ ቻናል',channel_s:'ከቴሌግራም ቻናል በራስ-ሰር',
 channel_h:'1. Ardi botን በቻናልዎ አድሚን ያድርጉ<br>2. ማንኛውንም የቻናል መልእክት ለbot ያስተላልፉ<br>3. አዳዲስ የምስል ልጥፎች በራስ-ሰር እንደ ምርት ይቀመጣሉ።',
 ai_reply:'AI በራስ-ሰር መልስ',tone:'የውይይት ዘይቤ',hours:'የስራ ሰዓት',hours_on:'የስራ ሰዓት አንቃ',offline:'ከስራ ሰዓት ውጪ መልእክት',
-bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',remove:'አስወግድ',accept_orders:'ትዕዛዞችን ተቀበል',accept_orders_s:'للانвойስ + የመስመር ላይ ክፍያ ያስፈልጋል'.replace('للانвойс ','ለ'),orders_on:'ትዕዛዞች በርተዋል — ኢንቮይስ ይላካል',orders_off:'ትዕዛዞች ጠፍተዋል',m_pay:'ክፍያዎች',chapa_bal:'በChapa የገባ',chapa_bal_s:'ቀጥታ ወደ Chapa ሂሳብዎ ይገባል',chapa_key:'የChapa ሚስጥራዊ ቁልፍ (ለደንበኛ ክፍያ)',chapa_key_s:'ከdashboard.chapa.co። ገንዘቡ ቀጥታ ወደ Chapa ሂሳብዎ ይሄዳል — Ardi ገንዘብ አይይዝም።',chapa_badkey:'ቁልፉ በCHASECK- መጀመር አለበት',chapa_rm_q:'የChapa ቁልፍዎን ማስወገድ? የመስመር ላይ ክፍያ ይጠፋል።',chapa_on:'የመስመር ላይ ክፍያ በርቷል',chapa_off:'የመስመር ላይ ክፍያ ጠፍቷል',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
+bank:'የባንክ ስም',acc_no:'የሂሳብ ቁጥር',acc_name:'የሂሳብ ባለቤት',save:'አስቀምጥ',remove:'አስወግድ',accept_orders:'ትዕዛዞችን ተቀበል',accept_orders_s:'ለኢንቮይስ እና የመስመር ላይ ክፍያ ያስፈልጋል',orders_on:'ትዕዛዞች በርተዋል — ኢንቮይስ ይላካል',orders_off:'ትዕዛዞች ጠፍተዋል',m_pay:'ክፍያዎች',chapa_bal:'በChapa የገባ',chapa_bal_s:'ቀጥታ ወደ Chapa ሂሳብዎ ይገባል',chapa_key:'የChapa ሚስጥራዊ ቁልፍ (ለደንበኛ ክፍያ)',chapa_key_s:'ከdashboard.chapa.co። ገንዘቡ ቀጥታ ወደ Chapa ሂሳብዎ ይሄዳል — Ardi ገንዘብ አይይዝም።',chapa_badkey:'ቁልፉ በCHASECK- መጀመር አለበት',chapa_rm_q:'የChapa ቁልፍዎን ማስወገድ? የመስመር ላይ ክፍያ ይጠፋል።',chapa_on:'የመስመር ላይ ክፍያ በርቷል',chapa_off:'የመስመር ላይ ክፍያ ጠፍቷል',m_app:'መተግበሪያ',lang:'Language / ቋንቋ',plan:'የክፍያ እቅድ',
 tab_home:'መነሻ',tab_cat:'ምርቶች',tab_ord:'ትዕዛዞች',tab_plan:'ፕላን',tab_more:'ተጨማሪ',p_name:'የሱቅ ስም',p_phone:'ስልክ',p_addr:'አድራሻ',p_desc:'መግለጫ',
-products:'ምርቶች',orders:'ትዕዛዞች',revenue:'ገቢ',pending:'በመጠባበቅ ላይ',in_stock:'በስቶክ ያለ',out:'ያለቀ',edit:'ምርት አርም',add_p:'ምርት ጨምር',
+products:'ምርቶች',orders:'ትዕዛዞች',revenue:'ገቢ',pending:'በመጠባበቅ ላይ',in_stock:'በስቶክ ያለ',out:'ያለቀ',stock:'ስቶክ (አማራጭ)',stock_ph:'ባዶ = ያልተገደበ',enter_stock:'ትክክለኛ የስቶክ ቁጥር ያስገቡ',edit:'ምርት አርም',add_p:'ምርት ጨምር',
 photo:'ፎቶ',change:'ቀይር',pname_ph:'ለምሳሌ ትኩስ አቮካዶ',price_ph:'ዋጋ በኢቲቢ',save_p:'ምርቱን አስቀምጥ',delete:'ምርቱን ሰርዝ',cancel:'ሰርዝ',
 del_q:'ይህን ምርት ይሰርዙ? ይህ ሊቀለበስ አይችልም።',no_prod:'ምንም ምርቶች የሉም',no_prod_s:'ለመሸጥ የመጀመሪያ ምርትዎን ይጨምሩ።',add_first:'ምርት ጨምር',
 no_ord:'ምንም ትዕዛዞች የሉም',no_ord_s:'አዳዲስ የደንበኛ ትዕዛዞች እዚህ ይታያሉ።',customer:'ደንበኛ',phone:'ስልክ',address:'አድራሻ',total:'ጠቅላላ',status:'ሁኔታ',date:'ቀን',items:'ዕቃዎች',
@@ -819,7 +836,7 @@ function renderProducts(){
   $('plist').innerHTML=items.length?items.map(p=>`
     <div class="card" style="padding:8px 14px"><div class="row" style="border:none;padding:8px 0" onclick="openProductSheet(${p.id})">
     ${p.photo_url?`<img class="im" src="${esc(p.photo_url)}" loading="lazy" onerror="imgFb(this)">`:`<div class="im ph">${ic('box',22)}</div>`}
-    <div class="tx"><div class="t1">${esc(p.name)}</div><div class="t2">${p.available?t('in_stock'):t('out')}</div></div>
+    <div class="tx"><div class="t1">${esc(p.name)}</div><div class="t2">${p.available?t('in_stock'):t('out')}${p.stock_qty!=null?' · ×'+p.stock_qty:''}</div></div>
     <div class="rt"><div class="amt">${fmtN(p.price)}</div></div></div></div>`).join('')
     :empty('box',t('no_prod'),t('no_prod_s'),t('add_first'),'openProductSheet()');
 }
@@ -832,6 +849,7 @@ function openProductSheet(id){
   <input type="file" id="ppFile" accept="image/png,image/jpeg,image/webp" hidden onchange="photoPick(this)"></div></div>
   <label class="fl">${t('p_name')}</label><input class="inp" id="ppName" maxlength="120" placeholder="${t('pname_ph')}" value="${esc(p?.name||'')}">
   <label class="fl">ETB</label><input class="inp" id="ppPrice" type="number" min="0" max="9999999" inputmode="decimal" placeholder="${t('price_ph')}" value="${esc(p?.price??'')}">
+  <label class="fl">${t('stock')}</label><input class="inp" id="ppStock" type="number" min="0" max="1000000" inputmode="numeric" placeholder="${t('stock_ph')}" value="${esc(p?.stock_qty??'')}">
   <div class="set-row"><div class="tx"><div class="t1">${t('in_stock')}</div></div><div class="tgl ${!p||p.available?'on':''}" id="ppAvail" onclick="this.classList.toggle('on')"></div></div>
   <div style="height:12px"></div>
   <button class="btn b-p" onclick="saveProduct()">${p?t('save_p'):t('add_p')}</button>
@@ -856,7 +874,9 @@ async function saveProduct(){
   if(name.length<2){toast(t('enter_name'),'err');return}
   if(!(price>=0)||price>9999999){toast(t('enter_price'),'err');return}
   const avail=$('ppAvail').classList.contains('on');
-  const body={name,price,photo_data:S.photoB64};
+  const sqRaw=($('ppStock').value||'').trim();
+  const body={name,price,photo_data:S.photoB64,stock_qty:sqRaw==='' ?null:parseInt(sqRaw,10)};
+  if(sqRaw!==''&&!(body.stock_qty>=0)){toast(t('enter_stock'),'err');return}
   let d;
   if(S.editId){ d=await api('/api/business/products/'+S.editId,{method:'PATCH',body:JSON.stringify(body)}); }
   else{ d=await api('/api/business/products',{method:'POST',body:JSON.stringify(body)}); }
@@ -967,6 +987,7 @@ async function loadMore(){
     $('aiTgl').classList.toggle('on',!!s.ai_active); $('aiState').textContent=s.ai_active?t('ai_on'):t('ai_off');
     $('aiDot').className='dot'+(s.ai_active?'':' off');
     renderTones(s.ai_tone||'friendly');
+    $('aiName').value=s.ai_name||'Ardi'; $('aiNameV').textContent=s.ai_name||'Ardi';
     $('hrsTgl').classList.toggle('on',!!s.business_hours_enabled);
     $('hrsS').value=s.business_hours_start||''; $('hrsE').value=s.business_hours_end||'';
     $('hrsSum').textContent=s.business_hours_enabled?((s.business_hours_start||'?')+'–'+(s.business_hours_end||'?')):t('hours');
@@ -990,6 +1011,7 @@ async function saveProfile(){
   if(d&&d.success){toast(t('prof_ok'),'ok');hap();loadMore()}
 }
 async function toggleAi(){ const d=await api('/api/business/ai/toggle',{method:'POST'}); if(d&&d.success){S.settings.ai_active=d.active;loadMore();toast(d.active?t('ai_on_t'):t('ai_off_t'),'ok');hap()} }
+async function saveAiName(){ const v=$('aiName').value.trim().slice(0,30)||'Ardi'; const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({ai_name:v})}); if(d&&d.success){toast(t('set_ok'),'ok');hap();loadMore()} }
 async function pickTone(id){ const d=await api('/api/business/settings',{method:'PATCH',body:JSON.stringify({ai_tone:id})}); if(d&&d.success){toast(t('tone_ok'),'ok');hap();loadMore()} }
 function toggleHrs(){ $('hrsTgl').classList.toggle('on'); }
 function validTime(v){ return /^([01]\d|2[0-3]):[0-5]\d$/.test(v.trim()); }
@@ -1514,7 +1536,7 @@ async def biz_products(request: Request):
 
         async with async_session() as s:
             rows = (await s.execute(select(Product).where(Product.business_id == b.id).order_by(Product.created_at.desc()))).scalars().all()
-            return {"products": [{"id": p.id, "name": p.name, "price": str(p.price), "available": p.available, "photo_url": p.photo_url, "created_at": p.created_at.isoformat() if p.created_at else ""} for p in rows]}
+            return {"products": [{"id": p.id, "name": p.name, "price": str(p.price), "available": p.available, "stock_qty": p.stock_qty, "photo_url": p.photo_url, "created_at": p.created_at.isoformat() if p.created_at else ""} for p in rows]}
     except Exception as e:
         return {"error": str(e)}
 
@@ -1539,7 +1561,17 @@ async def biz_add_product(request: Request):
         from storage import upload_product_photo
 
         async with async_session() as s:
-            p = Product(business_id=b.id, name=name, price=price)
+            stock = body.get("stock_qty", None)
+            if stock is not None and stock != "":
+                try:
+                    stock = int(stock)
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail="Invalid stock")
+                if not 0 <= stock <= 1_000_000:
+                    raise HTTPException(status_code=400, detail="Stock out of range")
+            p = Product(business_id=b.id, name=name, price=price,
+                        stock_qty=stock if stock != "" else None,
+                        available=False if stock == 0 else True)
             s.add(p)
             await s.commit()
             # Upload photo if provided (after commit so product has an id)
@@ -1632,6 +1664,19 @@ async def biz_update_product(request: Request, prod_id: int):
                 if price < 0 or price > 9999999:
                     raise HTTPException(status_code=400, detail="Price out of range")
                 p.price = price
+            if "stock_qty" in body:
+                if body["stock_qty"] is None or body["stock_qty"] == "":
+                    p.stock_qty = None
+                else:
+                    try:
+                        sq = int(body["stock_qty"])
+                    except (ValueError, TypeError):
+                        raise HTTPException(status_code=400, detail="Invalid stock")
+                    if not 0 <= sq <= 1_000_000:
+                        raise HTTPException(status_code=400, detail="Stock out of range")
+                    p.stock_qty = sq
+                    if sq == 0:
+                        p.available = False
             photo_data = body.get("photo_data")
             if photo_data:
                 import base64
@@ -1701,9 +1746,14 @@ async def biz_update_order_status(request: Request, order_id: int):
                 raise HTTPException(status_code=404)
             if new_status not in _ALLOWED.get(o.status, ()):
                 raise HTTPException(status_code=400, detail=f"Cannot move order from {o.status} to {new_status}")
+            was = o.status
             o.status = new_status
             await s.commit()
-            return {"success": True}
+            notes = []
+            if new_status == "confirmed" and was != "confirmed":
+                from bot.handlers import _apply_stock_sale
+                notes = await _apply_stock_sale(order_id)
+            return {"success": True, "stock_notes": notes}
     except HTTPException:
         raise
     except Exception as e:
@@ -1864,9 +1914,11 @@ async def _settle_order_payment(tx_ref: str) -> dict:
         if pay.status == "paid":
             return {"paid": True, "already": True}
         biz = await s.get(Business, pay.business_id)
-        if not biz or not (biz.chapa_secret_key or "").strip():
+        from db.crypto import decrypt_secret
+        biz_key = decrypt_secret(biz.chapa_secret_key if biz else "").strip()
+        if not biz or not biz_key:
             return {"paid": False, "reason": "no business key"}
-        key = biz.chapa_secret_key.strip()
+        key = biz_key
         order_id, biz_id, expected = pay.order_id, pay.business_id, float(pay.amount or 0)
     verdict = await chapa.verify_payment(tx_ref, secret=key)
     if not verdict.get("paid"):
@@ -2005,6 +2057,7 @@ async def biz_settings(request: Request):
     return {
         "ai_active": b.ai_active,
         "ai_tone": b.ai_tone,
+        "ai_name": b.ai_name or "Ardi",
         "business_hours_enabled": b.business_hours_enabled,
         "business_hours_start": b.business_hours_start,
         "business_hours_end": b.business_hours_end,
@@ -2136,14 +2189,15 @@ async def biz_update_settings(request: Request):
 
         async with async_session() as s:
             bb = await s.get(type(b), b.id)
-            for field in ("ai_tone", "business_hours_enabled", "business_hours_start", "business_hours_end", "ai_offline_message", "order_bank_name", "order_bank_account", "order_account_holder", "orders_enabled"):
+            for field in ("ai_tone", "ai_name", "business_hours_enabled", "business_hours_start", "business_hours_end", "ai_offline_message", "order_bank_name", "order_bank_account", "order_account_holder", "orders_enabled"):
                 if field in body:
                     setattr(bb, field, body[field])
             if "chapa_secret_key" in body:
+                from db.crypto import encrypt_secret
                 key = (body["chapa_secret_key"] or "").strip()
                 if key and not key.startswith("CHASECK-"):
                     raise HTTPException(status_code=400, detail="Chapa key must start with CHASECK-")
-                bb.chapa_secret_key = key or None
+                bb.chapa_secret_key = encrypt_secret(key) if key else None
             await s.commit()
             return {"success": True}
     except HTTPException:
